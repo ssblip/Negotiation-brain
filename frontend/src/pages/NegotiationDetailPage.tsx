@@ -265,7 +265,7 @@ export default function NegotiationDetailPage() {
                 {([
                   {
                     key: "price_score" as const,
-                    val: () => null,
+                    val: () => { const v = vs.current_offer?.["price"] ?? vs.quoted_price; return v != null ? Number(v).toLocaleString() : null; },
                   },
                   {
                     key: "delivery_score" as const,
