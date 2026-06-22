@@ -4,12 +4,14 @@ import * as XLSX from "xlsx";
 import { api, Escalation, Message, VendorSession } from "../api";
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
-  invited: { bg: "#eff6ff", text: "#2563eb" },
+  invited:  { bg: "#eff6ff", text: "#2563eb" },
   chatting: { bg: "#ecfdf5", text: "#059669" },
-  agreed: { bg: "#f0fdf4", text: "#16a34a" },
-  escalated: { bg: "#fff7ed", text: "#ea580c" },
+  agreed:   { bg: "#f0fdf4", text: "#16a34a" },
+  escalated:{ bg: "#fff7ed", text: "#ea580c" },
   rejected: { bg: "#fef2f2", text: "#dc2626" },
-  expired: { bg: "#f9fafb", text: "#6b7280" },
+  expired:  { bg: "#f9fafb", text: "#6b7280" },
+  awarded:  { bg: "#fef9c3", text: "#854d0e" },
+  closed:   { bg: "#f1f5f9", text: "#64748b" },
 };
 
 const STRATEGY_LABELS: Record<string, string> = {
@@ -69,12 +71,20 @@ export default function NegotiationDetailPage() {
 
   const [vendors, setVendors] = useState<VendorSession[]>([]);
   const [escalations, setEscalations] = useState<Escalation[]>([]);
-  // priorityDim: which dimension is assigned to each priority slot
   const [priorityDim, setPriorityDim] = useState<Partial<Record<"P1" | "P2" | "P3", DimKey>>>({});
   const [selectedVs, setSelectedVs] = useState<VendorSession | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval>>();
+
+  // Award modal state
+  const [showAward, setShowAward] = useState(false);
+  const [awardVsId, setAwardVsId] = useState<number | null>(null);
+  const [awardExplanation, setAwardExplanation] = useState("");
+  const [shareExplanation, setShareExplanation] = useState(true);
+  const [awarding, setAwarding] = useState(false);
+  const [awardErr, setAwardErr] = useState("");
+  const [awardedTo, setAwardedTo] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const [vs, esc] = await Promise.all([api.listVendors(nid), api.listEscalations(nid)]);
@@ -150,6 +160,25 @@ export default function NegotiationDetailPage() {
     XLSX.writeFile(wb, `negotiation-${nid}.xlsx`);
   }
 
+  async function submitAward() {
+    if (!awardVsId) return setAwardErr("Please select a vendor to award.");
+    if (!awardExplanation.trim()) return setAwardErr("Please provide an award explanation.");
+    setAwarding(true); setAwardErr("");
+    try {
+      const res = await api.awardTender(nid, { vendor_session_id: awardVsId, explanation: awardExplanation, share_explanation: shareExplanation });
+      setAwardedTo(res.awarded_to);
+      setShowAward(false);
+      setAwardExplanation("");
+      setAwardVsId(null);
+      await refresh();
+    } catch (e: unknown) {
+      setAwardErr(e instanceof Error ? e.message : "Award failed");
+    } finally {
+      setAwarding(false);
+    }
+  }
+
+  const isCompleted = vendors.some(v => v.status === "awarded");
   const pendingEscalations = escalations.filter(e => e.status === "pending");
 
   return (
@@ -162,10 +191,23 @@ export default function NegotiationDetailPage() {
           </button>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1e3a5f" }}>Live Negotiation Monitor</h1>
         </div>
-        <button onClick={exportExcel} style={{ padding: "8px 16px", background: "#059669", color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
-          ↓ Export Excel
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button onClick={exportExcel} style={{ padding: "8px 16px", background: "#059669", color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
+            ↓ Export Excel
+          </button>
+          {!isCompleted && vendors.length > 0 && (
+            <button onClick={() => setShowAward(true)} style={{ padding: "8px 16px", background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
+              Close &amp; Award Tender →
+            </button>
+          )}
+        </div>
       </div>
+
+      {awardedTo && (
+        <div style={{ background: "#fef9c3", border: "1px solid #fde047", borderRadius: 8, padding: "12px 20px", marginBottom: 20, fontWeight: 600, color: "#854d0e", fontSize: 14 }}>
+          Tender awarded to <strong>{awardedTo}</strong>. Emails have been sent to all vendors.
+        </div>
+      )}
 
       {/* Escalation alerts */}
       {pendingEscalations.length > 0 && (
@@ -316,6 +358,90 @@ export default function NegotiationDetailPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Award modal */}
+      {showAward && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ background: "#fff", borderRadius: 12, width: "100%", maxWidth: 620, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.25)" }}>
+            <div style={{ padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <h2 style={{ fontSize: 17, fontWeight: 700, color: "#1e3a5f", margin: 0 }}>Close &amp; Award Tender</h2>
+                <p style={{ fontSize: 13, color: "#6b7280", margin: "4px 0 0" }}>Select the winning vendor and provide a decision explanation.</p>
+              </div>
+              <button onClick={() => { setShowAward(false); setAwardErr(""); }} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>✕</button>
+            </div>
+
+            <div style={{ padding: "20px 24px" }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 10 }}>Select winning vendor:</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+                {vendors.map(v => {
+                  const offer = v.current_offer || {};
+                  const price = offer["price"] ?? v.quoted_price;
+                  const isSelected = awardVsId === v.id;
+                  return (
+                    <label key={v.id} style={{
+                      display: "flex", alignItems: "center", gap: 12, padding: "12px 14px",
+                      border: `2px solid ${isSelected ? "#1e3a5f" : "#e5e7eb"}`,
+                      borderRadius: 8, cursor: "pointer",
+                      background: isSelected ? "#eff6ff" : "#fafafa",
+                    }}>
+                      <input type="radio" name="award_vendor" value={v.id} checked={isSelected} onChange={() => setAwardVsId(v.id)} style={{ accentColor: "#1e3a5f" }} />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 600, color: "#1e293b", fontSize: 14 }}>{v.vendor_company || v.vendor_email}</div>
+                        <div style={{ fontSize: 12, color: "#6b7280" }}>{v.vendor_email}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
+                          {price != null ? `${v.quoted_currency} ${Number(price).toLocaleString()}` : "—"}
+                        </div>
+                        <div style={{ marginTop: 2 }}><Badge status={v.status} /></div>
+                      </div>
+                      {v.price_score != null && (
+                        <div style={{ textAlign: "center", minWidth: 44 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: v.price_score >= 80 ? "#059669" : v.price_score >= 50 ? "#d97706" : "#dc2626" }}>
+                            {v.price_score.toFixed(0)}%
+                          </div>
+                          <div style={{ fontSize: 10, color: "#9ca3af" }}>score</div>
+                        </div>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+
+              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
+                Award decision &amp; explanation <span style={{ color: "#dc2626" }}>*</span>
+              </label>
+              <textarea
+                value={awardExplanation}
+                onChange={e => setAwardExplanation(e.target.value)}
+                placeholder="e.g. Selected based on competitive pricing, strong delivery commitment, and ISO 9001 certification. This vendor demonstrated the best overall value for our requirements."
+                style={{ width: "100%", minHeight: 100, padding: "8px 10px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 13, resize: "vertical", boxSizing: "border-box", marginBottom: 12 }}
+              />
+
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#374151", cursor: "pointer", marginBottom: 16 }}>
+                <input type="checkbox" checked={shareExplanation} onChange={e => setShareExplanation(e.target.checked)} style={{ accentColor: "#1e3a5f" }} />
+                Share this explanation with unsuccessful vendors in their notification email
+              </label>
+
+              {awardErr && (
+                <div style={{ background: "#fee2e2", color: "#dc2626", padding: "8px 12px", borderRadius: 6, fontSize: 13, marginBottom: 12 }}>
+                  {awardErr}
+                </div>
+              )}
+
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button onClick={() => { setShowAward(false); setAwardErr(""); }} style={{ padding: "8px 18px", background: "transparent", color: "#6b7280", border: "1px solid #d1d5db", borderRadius: 6, cursor: "pointer", fontWeight: 500, fontSize: 14 }}>
+                  Cancel
+                </button>
+                <button onClick={submitAward} disabled={awarding} style={{ padding: "8px 20px", background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 14 }}>
+                  {awarding ? "Awarding…" : "Award Tender & Send Emails →"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Chat drawer */}
       {selectedVs && (

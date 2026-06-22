@@ -107,6 +107,9 @@ export const api = {
 
   listEscalations: (nid: number) => req<Escalation[]>(`/negotiations/${nid}/escalations`),
 
+  awardTender: (nid: number, body: { vendor_session_id: number; explanation: string; share_explanation: boolean }) =>
+    req<{ ok: boolean; awarded_to: string }>(`/negotiations/${nid}/award`, { method: "POST", body: JSON.stringify(body) }),
+
   resolveEscalation: (eid: number, decision: string, instruction?: string) =>
     req<Escalation>(`/escalations/${eid}/resolve`, { method: "POST", body: JSON.stringify({ decision, instruction }) }),
 

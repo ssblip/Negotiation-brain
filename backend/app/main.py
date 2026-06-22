@@ -22,7 +22,9 @@ from app.config import settings
 from app.database import Base, engine, get_db
 from app.emailer import (
     send_agreement_notification,
+    send_award_notification,
     send_escalation_alert,
+    send_rejection_notification,
     send_vendor_invitation,
 )
 from app.models import (
@@ -478,6 +480,50 @@ def resolve_escalation(
     db.commit()
     db.refresh(alert)
     return schemas.EscalationOut.model_validate(alert)
+
+
+@app.post("/api/negotiations/{nid}/award")
+def award_tender(
+    nid: int,
+    body: schemas.AwardIn,
+    buyer: Annotated[User, Depends(require_buyer)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Buyer closes the tender: awards one vendor, closes all others, sends emails."""
+    neg = _get_neg(nid, buyer.id, db)
+
+    winner = db.query(VendorSession).filter(
+        VendorSession.id == body.vendor_session_id,
+        VendorSession.negotiation_id == nid,
+    ).first()
+    if not winner:
+        raise HTTPException(404, "Vendor session not found")
+
+    now = datetime.now(timezone.utc)
+    winner.status = "awarded"
+    winner.closed_at = now
+
+    all_vendors = db.query(VendorSession).filter(VendorSession.negotiation_id == nid).all()
+    losers = [v for v in all_vendors if v.id != winner.id]
+    for loser in losers:
+        loser.status = "closed"
+        loser.closed_at = now
+
+    neg.status = "completed"
+    db.commit()
+
+    try:
+        send_award_notification(winner, neg, buyer, body.explanation)
+    except Exception as e:
+        print(f"Award email error: {e}")
+
+    for loser in losers:
+        try:
+            send_rejection_notification(loser, neg, buyer, body.explanation if body.share_explanation else None)
+        except Exception as e:
+            print(f"Rejection email error: {e}")
+
+    return {"ok": True, "awarded_to": winner.vendor_company or winner.vendor_email}
 
 
 # ── Vendor: magic-link access ─────────────────────────────────────────────────

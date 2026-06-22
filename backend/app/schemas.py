@@ -195,6 +195,12 @@ class EscalationResolveIn(BaseModel):
     instruction: str | None = None
 
 
+class AwardIn(BaseModel):
+    vendor_session_id: int
+    explanation: str
+    share_explanation: bool = True
+
+
 # ---------- Vendor magic-link context ----------
 
 class VendorContextOut(BaseModel):
