@@ -142,17 +142,68 @@ def _build_spec_extraction_block(custom_specs: list[dict]) -> str:
 
 
 _CONDENSE_PROMPT = """\
-Extract only the negotiation bot logic from this procurement strategy document.
-Output compact structured text under 800 words. Use short bullet points. No preamble, no commentary.
+You are extracting chatbot operating instructions from a procurement negotiation strategy document.
+Output ONLY the content the chatbot needs at runtime. Compact bullet points. No preamble, no commentary.
+Target: under 1000 words total.
 
-Sections to extract:
-1. CORE PRINCIPLES (max 6 bullets)
-2. STRATEGIES — for each S1-S6 found: name, trigger condition, key tactic (one line each)
-3. ESCALATION RULES — when to escalate to human buyer (max 4 bullets)
-4. CONCESSION RULES — how and when to concede (max 4 bullets)
-5. TONE & STYLE — communication style rules (max 3 bullets)
+Extract the following sections (use these exact headings). Omit any section absent from the document.
 
-If a section is absent from the document, omit it entirely.
+## CORE PRINCIPLES
+Up to 6 bullets. The non-negotiable rules the bot must always follow regardless of strategy.
+
+## STRATEGIES
+For EACH strategy variant found (e.g. S1–S6): one entry with:
+  - Name & trigger condition (when to use this strategy)
+  - Primary tactic / opening stance
+  - Key moves and responses
+  - What to concede first vs last
+  - Exit / escalation condition for this strategy
+
+## PRICE NEGOTIATION RULES
+All rules about price moves, including:
+  - Maximum single-round concession % allowed before escalating (CRITICAL — preserve exact threshold and action)
+  - How to respond to price anchors, large jumps, and aggressive cuts
+  - When to invoke "best and final offer" (BAFO)
+  - When price is off-limits vs negotiable
+
+## SPEC / QUALITY / DELIVERY / PAYMENT / WARRANTY RULES
+Key rules per dimension:
+  - How to handle quality deflection (vendor claims spec changes solve price gap)
+  - Delivery negotiation approach and limits
+  - Payment terms approach and limits
+  - Warranty approach
+  - Logrolling: how to trade one dimension against another
+
+## CONCESSION STRATEGY
+  - Concession pacing rules (how fast / how much per round)
+  - Diminishing concession pattern if specified
+  - What to give up first vs protect longest
+  - How to signal "near limit" without revealing the actual limit
+
+## ESCALATION TRIGGERS
+Exact conditions that require escalating to a human buyer, including:
+  - Large single-round price move threshold (preserve exact % and wording)
+  - Red-flag vendor tactics that trigger escalation
+  - Any other escalation conditions listed
+
+## BATNA & BAFO PROTOCOLS
+  - When to invoke BATNA (best alternative)
+  - How to present BAFO
+  - How to close or walk away
+
+## BEHAVIORAL SCENARIOS
+  - How to respond to each vendor tactic listed (e.g. anchoring, urgency pressure, quality deflection, lowball, bundling tricks)
+  - Red flags to watch for
+
+## FORBIDDEN & PERMITTED LANGUAGE
+  - Exact phrases or types of statements the bot MUST NEVER say (forbidden)
+  - Exact phrases or approaches the bot SHOULD use (permitted/preferred)
+  - Secrecy rules: what internal numbers / targets must never be revealed
+
+## AGREEMENT & HANDOFF
+  - What constitutes a valid agreement
+  - What the bot says / does not say after agreement is reached
+  - No award language rules
 
 DOCUMENT:
 {text}
@@ -164,7 +215,7 @@ def condense_strategy_doc(raw_text: str) -> str:
     prompt = _CONDENSE_PROMPT.format(text=raw_text[:40000])
     msg = _client.messages.create(
         model=settings.claude_model,
-        max_tokens=1024,
+        max_tokens=1500,
         messages=[{"role": "user", "content": prompt}],
     )
     return msg.content[0].text.strip()
