@@ -1,0 +1,650 @@
+import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { api, VendorQuote } from "../api";
+
+const card: React.CSSProperties = { background: "#fff", borderRadius: 10, padding: 28, boxShadow: "0 1px 4px rgba(0,0,0,0.07)", border: "1px solid #e5e7eb", marginBottom: 20 };
+const label: React.CSSProperties = { display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500, color: "#374151" };
+const input: React.CSSProperties = { width: "100%", padding: "7px 10px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 14, marginBottom: 12 };
+const h3: React.CSSProperties = { fontSize: 15, fontWeight: 700, color: "#1e3a5f", marginBottom: 16 };
+const btn: React.CSSProperties = { padding: "8px 18px", background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 14 };
+const btnGhost: React.CSSProperties = { ...btn, background: "transparent", color: "#1e3a5f", border: "1px solid #1e3a5f" };
+const btnBack: React.CSSProperties = { padding: "8px 14px", background: "transparent", color: "#6b7280", border: "1px solid #d1d5db", borderRadius: 6, fontWeight: 500, cursor: "pointer", fontSize: 14 };
+
+type Step = "basics" | "quotes" | "targets" | "review";
+const STEPS: Step[] = ["basics", "quotes", "targets", "review"];
+const STEP_LABELS = ["Basics", "Upload Quotes", "Set Targets", "Review & Send"];
+
+export default function NewNegotiationPage() {
+  const nav = useNavigate();
+  const [searchParams] = useSearchParams();
+  const resumeId = searchParams.get("resume");
+
+  const [step, setStep] = useState<Step>("basics");
+  const [negId, setNegId] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [resumeLoading, setResumeLoading] = useState(!!resumeId);
+  const [err, setErr] = useState("");
+  const [activeVendorTab, setActiveVendorTab] = useState(0);
+
+  // Step 1 — Basics
+  const [basics, setBasics] = useState({ title: "", item: "", quantity: 1, currency: "USD" });
+
+  // Step 2 — Quote file + parsed vendors
+  const [quoteFile, setQuoteFile] = useState<File | null>(null);
+  const [vendors, setVendors] = useState<VendorQuote[]>([]);
+  const [parsing, setParsing] = useState(false);
+
+  // Step 3 — Targets
+  const [targets, setTargets] = useState({
+    target_price: "", target_delivery_days: "",
+    target_payment_days: "", warranty_months_target: "",
+    batna_description: "", batna_strength: "5",
+  });
+
+  type CustomSpec = { name: string; field_type: string; required_value: string; weight: string; unit: string };
+  const BLANK_SPEC: CustomSpec = { name: "", field_type: "NUM", required_value: "", weight: "1", unit: "" };
+  const [customSpecs, setCustomSpecs] = useState<CustomSpec[]>([]);
+
+  function setT(k: string) { return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setTargets(t => ({ ...t, [k]: e.target.value })); }
+  function setSpec(idx: number, k: keyof CustomSpec, v: string) {
+    setCustomSpecs(ss => ss.map((s, i) => i === idx ? { ...s, [k]: v } : s));
+  }
+
+  // On mount, if resuming an existing draft, load its data and jump to right step
+  useEffect(() => {
+    if (!resumeId) return;
+    const id = Number(resumeId);
+    if (isNaN(id)) return;
+
+    (async () => {
+      setResumeLoading(true);
+      try {
+        const neg = await api.getNegotiation(id);
+        setNegId(neg.id);
+        setBasics({ title: neg.title, item: neg.item, quantity: neg.quantity, currency: neg.currency });
+
+        const [existingVendors, existingTargets] = await Promise.all([
+          api.listVendors(id).catch(() => []),
+          api.getTargets(id).catch(() => null),
+        ]);
+
+        if (existingVendors.length > 0) {
+          // vendors already saved — map to VendorQuote shape for display
+          setVendors(existingVendors.map(vs => ({
+            vendor_email: vs.vendor_email,
+            vendor_company: vs.vendor_company,
+            vendor_name: vs.vendor_name,
+            quoted_price: vs.quoted_price,
+            quoted_delivery_days: vs.quoted_delivery_days,
+            quoted_payment_days: vs.quoted_payment_days,
+            quoted_warranty_months: vs.quoted_warranty_months,
+            quoted_currency: vs.quoted_currency,
+            custom_spec_values: null,
+          })));
+        }
+
+        if (existingTargets) {
+          setTargets({
+            target_price: existingTargets.target_price?.toString() ?? "",
+            target_delivery_days: existingTargets.target_delivery_days?.toString() ?? "",
+            target_payment_days: existingTargets.target_payment_days?.toString() ?? "",
+            warranty_months_target: existingTargets.warranty_months_target?.toString() ?? "",
+            batna_description: existingTargets.batna_description ?? "",
+            batna_strength: existingTargets.batna_strength?.toString() ?? "5",
+          });
+          if (existingTargets.custom_specs?.length) {
+            setCustomSpecs(existingTargets.custom_specs.map((s: { name: string; field_type: string; required_value: unknown; weight: number; unit: string | null }) => ({
+              name: s.name,
+              field_type: s.field_type,
+              required_value: String(s.required_value ?? ""),
+              weight: String(s.weight ?? 1),
+              unit: s.unit ?? "",
+            })));
+          }
+          setStep("review");
+        } else if (existingVendors.length > 0) {
+          setStep("targets");
+        } else {
+          setStep("quotes");
+        }
+      } catch {
+        setErr("Could not load draft negotiation.");
+      } finally {
+        setResumeLoading(false);
+      }
+    })();
+  }, [resumeId]);
+
+  const stepIdx = STEPS.indexOf(step);
+
+  function goBack() {
+    setErr("");
+    const prev = STEPS[stepIdx - 1];
+    if (prev) setStep(prev);
+  }
+
+  async function handleBasics() {
+    if (!basics.title || !basics.item) return setErr("Title and item are required");
+    setLoading(true); setErr("");
+    try {
+      let id = negId;
+      if (id) {
+        await api.updateNegotiation(id, { ...basics, quantity: Number(basics.quantity) });
+      } else {
+        const neg = await api.createNegotiation({ ...basics, quantity: Number(basics.quantity) });
+        id = neg.id;
+        setNegId(id);
+      }
+      // Save custom specs immediately so the parser can use them in Step 2
+      await api.setTargets(id!, {
+        custom_specs: customSpecs
+          .filter(s => s.name.trim())
+          .map(s => ({
+            name: s.name.trim(),
+            field_type: s.field_type,
+            required_value: s.field_type === "NUM" || s.field_type === "PCTNUM"
+              ? Number(s.required_value)
+              : s.field_type === "BOOL"
+              ? s.required_value.toLowerCase() === "true"
+              : s.required_value,
+            weight: Number(s.weight) || 1,
+            unit: s.unit || null,
+          })),
+      });
+      setStep("quotes");
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "Error"); }
+    finally { setLoading(false); }
+  }
+
+  async function handleParseQuotes() {
+    if (!quoteFile || !negId) return setErr("Please select a file");
+    setParsing(true); setErr("");
+    try {
+      const result = await api.parseQuotes(negId, quoteFile);
+      console.log("Parsed vendors:", JSON.stringify(result.vendors, null, 2));
+      setVendors(result.vendors.map(v => ({ ...v, vendor_email: v.vendor_email || "" })));
+      setParsing(false);
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "Parse failed"); setParsing(false); }
+  }
+
+  function updateVendor(idx: number, field: keyof VendorQuote, value: string | number | null) {
+    setVendors(vs => vs.map((v, i) => i === idx ? { ...v, [field]: value } : v));
+  }
+
+  function updateVendorSpec(idx: number, key: string, value: string) {
+    setVendors(vs => vs.map((v, i) => i === idx
+      ? { ...v, custom_spec_values: { ...(v.custom_spec_values || {}), [key]: value } }
+      : v));
+  }
+
+  function getSpec(v: VendorQuote, key: string): string {
+    return (v.custom_spec_values as Record<string, string> | null)?.[key] ?? "";
+  }
+
+  async function handleQuotesDone() {
+    if (!negId || vendors.length === 0) return setErr("Add at least one vendor");
+    setLoading(true); setErr("");
+    try {
+      await api.addVendors(negId, vendors);
+      setStep("targets");
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "Error"); }
+    finally { setLoading(false); }
+  }
+
+  async function handleTargets() {
+    if (!negId) return;
+    setLoading(true); setErr("");
+    try {
+      const num = (v: string) => v ? Number(v) : null;
+      await api.setTargets(negId, {
+        target_price: num(targets.target_price),
+        target_delivery_days: num(targets.target_delivery_days),
+        target_payment_days: num(targets.target_payment_days),
+        warranty_months_target: num(targets.warranty_months_target),
+        batna_description: targets.batna_description || null,
+        batna_strength: num(targets.batna_strength),
+        // custom_specs preserved from Step 1 — backend merges them
+      });
+      setStep("review");
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "Error"); }
+    finally { setLoading(false); }
+  }
+
+  async function handleSend() {
+    if (!negId) return;
+    setLoading(true); setErr("");
+    try {
+      const res = await api.sendInvitations(negId);
+      alert(`✓ Invitations sent to ${res.sent} vendors!`);
+      nav(`/negotiations/${negId}`);
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "Error"); }
+    finally { setLoading(false); }
+  }
+
+  if (resumeLoading) {
+    return (
+      <div style={{ maxWidth: 760, margin: "0 auto", padding: "80px 16px", textAlign: "center", color: "#6b7280" }}>
+        Loading draft…
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: 760, margin: "0 auto", padding: "32px 16px" }}>
+      <div style={{ marginBottom: 24, display: "flex", alignItems: "center", gap: 12 }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: "#1e3a5f" }}>
+          {resumeId ? "Continue Negotiation Setup" : "New Negotiation"}
+        </h1>
+        {resumeId && (
+          <span style={{ fontSize: 12, background: "#fef3c7", color: "#92400e", padding: "2px 8px", borderRadius: 99, fontWeight: 600 }}>
+            DRAFT
+          </span>
+        )}
+      </div>
+
+      {/* Step indicator */}
+      <div style={{ display: "flex", gap: 0, marginBottom: 32 }}>
+        {STEP_LABELS.map((l, i) => (
+          <div key={l} style={{ flex: 1, textAlign: "center" }}>
+            <div style={{ height: 4, background: i <= stepIdx ? "#1e3a5f" : "#e5e7eb", marginBottom: 6, borderRadius: 2 }} />
+            <span style={{ fontSize: 11, color: i <= stepIdx ? "#1e3a5f" : "#9ca3af", fontWeight: i === stepIdx ? 700 : 400 }}>{l}</span>
+          </div>
+        ))}
+      </div>
+
+      {err && <div style={{ background: "#fee2e2", color: "#dc2626", padding: "8px 12px", borderRadius: 6, marginBottom: 16, fontSize: 14 }}>{err}</div>}
+
+      {/* Step 1: Basics */}
+      {step === "basics" && (
+        <div style={card}>
+          <h3 style={h3}>Negotiation Basics</h3>
+          <label style={label}>Negotiation Title</label>
+          <input style={input} value={basics.title} onChange={e => setBasics(b => ({ ...b, title: e.target.value }))} placeholder="e.g. Steel Bolts Q3 2025" />
+          <label style={label}>Item / Product</label>
+          <input style={input} value={basics.item} onChange={e => setBasics(b => ({ ...b, item: e.target.value }))} placeholder="e.g. M8 Stainless Steel Bolts" />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={label}>Quantity</label>
+              <input style={input} type="number" min={1} value={basics.quantity} onChange={e => setBasics(b => ({ ...b, quantity: Number(e.target.value) }))} />
+            </div>
+            <div>
+              <label style={label}>Currency</label>
+              <input style={input} value={basics.currency} onChange={e => setBasics(b => ({ ...b, currency: e.target.value }))} placeholder="USD" />
+            </div>
+          </div>
+          {/* Custom Specs — defined here so parser can extract matching values */}
+          <div style={{ marginTop: 20, borderTop: "1px solid #e5e7eb", paddingTop: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#1e3a5f" }}>Required Specifications</div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                  Define specs now — the AI will extract each vendor's values when parsing the quote document.
+                </div>
+              </div>
+              <button onClick={() => setCustomSpecs(ss => [...ss, { ...BLANK_SPEC }])}
+                style={{ padding: "5px 12px", background: "#f0f9ff", color: "#1e3a5f", border: "1px solid #bae6fd", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                + Add Spec
+              </button>
+            </div>
+
+            {customSpecs.length === 0 && (
+              <div style={{ fontSize: 13, color: "#9ca3af", fontStyle: "italic", padding: "8px 0 12px" }}>
+                No specs yet — e.g. IP Rating, MIL-STD-810H, ISO 9001, Defect Rate…
+              </div>
+            )}
+
+            {customSpecs.map((s, si) => (
+              <div key={si} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr 0.5fr 0.5fr auto", gap: 8, alignItems: "end" }}>
+                  <div>
+                    <label style={{ ...label, marginBottom: 2 }}>Spec Name</label>
+                    <input style={{ ...input, marginBottom: 0 }} value={s.name} onChange={e => setSpec(si, "name", e.target.value)} placeholder="e.g. IP Rating" />
+                  </div>
+                  <div>
+                    <label style={{ ...label, marginBottom: 2 }}>Type</label>
+                    <select style={{ ...input, marginBottom: 0 }} value={s.field_type} onChange={e => setSpec(si, "field_type", e.target.value)}>
+                      <option value="NUM">Number</option>
+                      <option value="BOOL">Yes/No</option>
+                      <option value="CAT">Category</option>
+                      <option value="MULTI">Multi-select</option>
+                      <option value="PCTNUM">Percentage</option>
+                      <option value="TIER">Tier</option>
+                      <option value="TEXT">Text</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ ...label, marginBottom: 2 }}>Required Value</label>
+                    {s.field_type === "BOOL" ? (
+                      <select style={{ ...input, marginBottom: 0 }} value={s.required_value} onChange={e => setSpec(si, "required_value", e.target.value)}>
+                        <option value="true">Yes / True</option>
+                        <option value="false">No / False</option>
+                      </select>
+                    ) : (
+                      <input style={{ ...input, marginBottom: 0 }} value={s.required_value} onChange={e => setSpec(si, "required_value", e.target.value)} placeholder={s.field_type === "NUM" ? "e.g. 65" : "e.g. IP65"} />
+                    )}
+                  </div>
+                  <div>
+                    <label style={{ ...label, marginBottom: 2 }}>Unit</label>
+                    <input style={{ ...input, marginBottom: 0 }} value={s.unit} onChange={e => setSpec(si, "unit", e.target.value)} placeholder="opt." />
+                  </div>
+                  <div>
+                    <label style={{ ...label, marginBottom: 2 }}>Weight</label>
+                    <input style={{ ...input, marginBottom: 0 }} type="number" min="0.1" step="0.1" value={s.weight} onChange={e => setSpec(si, "weight", e.target.value)} />
+                  </div>
+                  <button onClick={() => setCustomSpecs(ss => ss.filter((_, j) => j !== si))}
+                    style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 20, paddingBottom: 2 }}>×</button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button style={{ ...btn, marginTop: 8 }} onClick={handleBasics} disabled={loading}>
+            {loading ? "Saving…" : negId ? "Update & Continue →" : "Next →"}
+          </button>
+        </div>
+      )}
+
+      {/* Step 2: Upload quotes */}
+      {step === "quotes" && (
+        <div style={card}>
+          <h3 style={h3}>Upload Vendor Quotes Document</h3>
+          <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
+            Upload the single document containing all vendor quotes. AI will extract each vendor's data automatically.
+          </p>
+          <input type="file" accept=".pdf,.docx,.xlsx,.txt" onChange={e => setQuoteFile(e.target.files?.[0] || null)} style={{ marginBottom: 12 }} />
+          <button style={{ ...btnGhost, marginBottom: 20 }} onClick={handleParseQuotes} disabled={parsing || !quoteFile}>
+            {parsing ? "Parsing with AI…" : "Parse Document"}
+          </button>
+
+          {vendors.length > 0 && (
+            <>
+              <h4 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12, color: "#374151" }}>
+                Found {vendors.length} vendor{vendors.length > 1 ? "s" : ""} — review details:
+              </h4>
+
+              {/* Vendor tabs */}
+              <div style={{ display: "flex", gap: 0, borderBottom: "2px solid #e5e7eb", marginBottom: 0, flexWrap: "wrap" }}>
+                {vendors.map((v, i) => (
+                  <button key={i} onClick={() => setActiveVendorTab(i)} style={{
+                    padding: "8px 16px", border: "none", background: "none", cursor: "pointer",
+                    fontSize: 13, fontWeight: activeVendorTab === i ? 700 : 400,
+                    color: activeVendorTab === i ? "#1e3a5f" : "#6b7280",
+                    borderBottom: activeVendorTab === i ? "2px solid #1e3a5f" : "2px solid transparent",
+                    marginBottom: -2, whiteSpace: "nowrap",
+                  }}>
+                    {v.vendor_company || `Vendor ${i + 1}`}
+                  </button>
+                ))}
+                <button onClick={() => {
+                  setVendors(vs => [...vs, { vendor_email: "", vendor_company: "", vendor_name: "", quoted_price: null, quoted_delivery_days: null, quoted_payment_days: null, quoted_warranty_months: null, quoted_currency: "USD", custom_spec_values: null }]);
+                  setActiveVendorTab(vendors.length);
+                }} style={{ padding: "8px 14px", border: "none", background: "none", cursor: "pointer", fontSize: 13, color: "#2563eb", marginBottom: -2 }}>
+                  + Add Vendor
+                </button>
+              </div>
+
+              {/* Active vendor panel */}
+              {vendors.map((v, i) => {
+                if (i !== activeVendorTab) return null;
+                const sec: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#1e3a5f", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 10, marginTop: 20, paddingBottom: 6, borderBottom: "1px solid #e5e7eb" };
+                return (
+                  <div key={i} style={{ border: "1px solid #e5e7eb", borderTop: "none", borderRadius: "0 0 8px 8px", padding: 20, marginBottom: 16 }}>
+
+                    {/* Identity */}
+                    <div style={sec}>Identity</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <label style={label}>Company Name</label>
+                        <input style={input} value={v.vendor_company || ""} onChange={e => updateVendor(i, "vendor_company", e.target.value)} placeholder="e.g. Apex Tech Systems" />
+                      </div>
+                      <div>
+                        <label style={{ ...label, color: "#dc2626" }}>Email Address *</label>
+                        <input style={input} type="email" value={v.vendor_email} onChange={e => updateVendor(i, "vendor_email", e.target.value)} placeholder="vendor@company.com" />
+                      </div>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label style={label}>Contact Name</label>
+                        <input style={input} value={v.vendor_name || ""} onChange={e => updateVendor(i, "vendor_name", e.target.value)} placeholder="e.g. James Whitfield" />
+                      </div>
+                    </div>
+
+                    {/* Price */}
+                    <div style={sec}>Price</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <label style={label}>Quoted Unit Price</label>
+                        <input style={input} type="number" step="0.01" value={v.quoted_price ?? ""} onChange={e => updateVendor(i, "quoted_price", e.target.value ? Number(e.target.value) : null)} placeholder="e.g. 1480.00" />
+                      </div>
+                      <div>
+                        <label style={label}>Currency</label>
+                        <input style={input} value={v.quoted_currency} onChange={e => updateVendor(i, "quoted_currency", e.target.value)} placeholder="USD" />
+                      </div>
+                    </div>
+
+                    {/* Delivery */}
+                    <div style={sec}>Delivery</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <label style={label}>Lead Time (days from PO)</label>
+                        <input style={input} type="number" value={v.quoted_delivery_days ?? ""} onChange={e => updateVendor(i, "quoted_delivery_days", e.target.value ? Number(e.target.value) : null)} placeholder="e.g. 35" />
+                      </div>
+                      <div>
+                        <label style={label}>Lead Time Variability</label>
+                        <input style={input} value={getSpec(v, "lead_time_risk")} onChange={e => updateVendorSpec(i, "lead_time_risk", e.target.value)} placeholder="e.g. Subject to freight delays" />
+                      </div>
+                    </div>
+
+                    {/* Payment Terms */}
+                    <div style={sec}>Payment Terms</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <label style={label}>Payment Terms (Net-X days)</label>
+                        <input style={input} type="number" value={v.quoted_payment_days ?? ""} onChange={e => updateVendor(i, "quoted_payment_days", e.target.value ? Number(e.target.value) : null)} placeholder="e.g. 45" />
+                      </div>
+                      <div>
+                        <label style={label}>Advance Payment Required</label>
+                        <input style={input} value={getSpec(v, "advance_payment")} onChange={e => updateVendorSpec(i, "advance_payment", e.target.value)} placeholder="e.g. 30% upfront" />
+                      </div>
+                    </div>
+
+                    {/* Warranty & SLA */}
+                    <div style={sec}>Warranty & SLA</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <label style={label}>Warranty Period (months)</label>
+                        <input style={input} type="number" value={v.quoted_warranty_months ?? ""} onChange={e => updateVendor(i, "quoted_warranty_months", e.target.value ? Number(e.target.value) : null)} placeholder="e.g. 24" />
+                      </div>
+                    </div>
+
+                    {/* Quality Deflection */}
+                    <div style={sec}>Quality Deflection</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <label style={label}>Certifications</label>
+                        <input style={input} value={getSpec(v, "certifications")} onChange={e => updateVendorSpec(i, "certifications", e.target.value)} placeholder="e.g. ISO 9001, MIL-STD-810H, IP65" />
+                      </div>
+                      <div>
+                        <label style={label}>Defect Rate (%)</label>
+                        <input style={input} type="number" step="0.01" min="0" max="100" value={getSpec(v, "defect_rate")} onChange={e => updateVendorSpec(i, "defect_rate", e.target.value)} placeholder="e.g. 0.5" />
+                      </div>
+                      <div>
+                        <label style={label}>Quality Standard</label>
+                        <input style={input} value={getSpec(v, "quality_standard")} onChange={e => updateVendorSpec(i, "quality_standard", e.target.value)} placeholder="e.g. Six Sigma, AQL 1.0" />
+                      </div>
+                      <div>
+                        <label style={label}>Inspection / Acceptance</label>
+                        <input style={input} value={getSpec(v, "inspection_terms")} onChange={e => updateVendorSpec(i, "inspection_terms", e.target.value)} placeholder="e.g. Third-party QC accepted" />
+                      </div>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label style={label}>Quality Deflection Notes</label>
+                        <textarea style={{ ...input, height: 64, resize: "vertical" } as React.CSSProperties} value={getSpec(v, "quality_notes")} onChange={e => updateVendorSpec(i, "quality_notes", e.target.value)} placeholder="Known quality objections or deflection tactics observed in the quote…" />
+                      </div>
+                    </div>
+
+                    {/* Buyer-defined custom specs */}
+                    {customSpecs.length > 0 && (
+                      <>
+                        <div style={sec}>Buyer-Defined Specs</div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                          {customSpecs.map(s => {
+                            const val = getSpec(v, s.name);
+                            const autoExtracted = val !== "" && val !== null && val !== undefined;
+                            return (
+                              <div key={s.name} style={s.field_type === "TEXT" ? { gridColumn: "1 / -1" } : {}}>
+                                <label style={label}>
+                                  {s.name}{s.unit ? ` (${s.unit})` : ""}
+                                  {autoExtracted && (
+                                    <span style={{ marginLeft: 6, fontSize: 10, color: "#059669", background: "#d1fae5", borderRadius: 4, padding: "1px 5px", fontWeight: 600 }}>auto</span>
+                                  )}
+                                </label>
+                                {s.field_type === "BOOL" ? (
+                                  <select style={input} value={String(val)} onChange={e => updateVendorSpec(i, s.name, e.target.value)}>
+                                    <option value="">— not specified —</option>
+                                    <option value="true">Yes</option>
+                                    <option value="false">No</option>
+                                  </select>
+                                ) : s.field_type === "NUM" || s.field_type === "PCTNUM" ? (
+                                  <input style={input} type="number" step={s.field_type === "PCTNUM" ? "0.01" : "1"} value={val ?? ""} onChange={e => updateVendorSpec(i, s.name, e.target.value)} placeholder={s.required_value ? `Target: ${s.required_value}` : ""} />
+                                ) : (
+                                  <input style={input} value={val ?? ""} onChange={e => updateVendorSpec(i, s.name, e.target.value)} placeholder={s.required_value ? `Target: ${s.required_value}` : `e.g. ${s.name}`} />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Other Details */}
+                    <div style={sec}>Other Details</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                      <div>
+                        <label style={label}>Volume Discount</label>
+                        <input style={input} value={getSpec(v, "volume_discount")} onChange={e => updateVendorSpec(i, "volume_discount", e.target.value)} placeholder="e.g. 3% above 250 units" />
+                      </div>
+                      <div>
+                        <label style={label}>Country of Origin</label>
+                        <input style={input} value={getSpec(v, "origin_country")} onChange={e => updateVendorSpec(i, "origin_country", e.target.value)} placeholder="e.g. India, USA" />
+                      </div>
+                      <div style={{ gridColumn: "1 / -1" }}>
+                        <label style={label}>Additional Notes</label>
+                        <textarea style={{ ...input, height: 64, resize: "vertical" } as React.CSSProperties} value={getSpec(v, "notes")} onChange={e => updateVendorSpec(i, "notes", e.target.value)} placeholder="Any other relevant information from the quote…" />
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid #f3f4f6" }}>
+                      <button onClick={() => {
+                        setVendors(vs => vs.filter((_, j) => j !== i));
+                        setActiveVendorTab(Math.max(0, i - 1));
+                      }} style={{ fontSize: 12, color: "#dc2626", background: "none", border: "none", cursor: "pointer" }}>
+                        Remove this vendor
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                <button style={btnBack} onClick={goBack}>← Back</button>
+                <button style={btn} onClick={handleQuotesDone} disabled={loading}>{loading ? "Saving…" : "Save Vendors & Continue →"}</button>
+              </div>
+            </>
+          )}
+
+          {vendors.length === 0 && (
+            <div style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 12 }}>
+                Parse a document above, or{" "}
+                <button style={{ background: "none", border: "none", color: "#2563eb", cursor: "pointer", textDecoration: "underline", fontSize: 13 }}
+                  onClick={() => setVendors([{ vendor_email: "", vendor_company: "", vendor_name: "", quoted_price: null, quoted_delivery_days: null, quoted_payment_days: null, quoted_warranty_months: null, quoted_currency: "USD", custom_spec_values: null }])}>
+                  add vendor manually
+                </button>.
+              </div>
+              <button style={btnBack} onClick={goBack}>← Back</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Step 3: Targets */}
+      {step === "targets" && (
+        <div style={card}>
+          <h3 style={h3}>Set Negotiation Targets</h3>
+          <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
+            These are INTERNAL — the AI bot will never reveal them to vendors.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={label}>Target Price (per unit)</label>
+              <input style={input} type="number" step="0.01" value={targets.target_price} onChange={setT("target_price")} placeholder="e.g. 1400" />
+            </div>
+            <div>
+              <label style={label}>Target Delivery (days)</label>
+              <input style={input} type="number" value={targets.target_delivery_days} onChange={setT("target_delivery_days")} placeholder="e.g. 30" />
+            </div>
+            <div>
+              <label style={label}>Target Payment Terms (Net-X days)</label>
+              <input style={input} type="number" value={targets.target_payment_days} onChange={setT("target_payment_days")} placeholder="e.g. 45" />
+            </div>
+            <div>
+              <label style={label}>Warranty Target (months)</label>
+              <input style={input} type="number" value={targets.warranty_months_target} onChange={setT("warranty_months_target")} placeholder="e.g. 24" />
+            </div>
+          </div>
+          <label style={label}>BATNA Description (alternative if talks fail)</label>
+          <textarea style={{ ...input, height: 64, resize: "vertical" } as React.CSSProperties} value={targets.batna_description} onChange={setT("batna_description")} placeholder="e.g. We have another supplier at $2.80 who can deliver in 45 days" />
+          <label style={label}>BATNA Strength (1–10)</label>
+          <input style={{ ...input, width: 80 }} type="number" min={1} max={10} value={targets.batna_strength} onChange={setT("batna_strength")} />
+
+          {customSpecs.length > 0 && (
+            <div style={{ marginTop: 20, borderTop: "1px solid #e5e7eb", paddingTop: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "#1e3a5f", marginBottom: 8 }}>
+                Required Specifications ({customSpecs.length})
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {customSpecs.map((s, si) => (
+                  <span key={si} style={{ fontSize: 12, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 99, padding: "3px 10px" }}>
+                    {s.name}: {s.required_value}{s.unit ? ` ${s.unit}` : ""}
+                  </span>
+                ))}
+              </div>
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 6 }}>
+                Specs defined in Step 1 — vendor values were extracted during document parsing.
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+            <button style={btnBack} onClick={goBack}>← Back</button>
+            <button style={btn} onClick={handleTargets} disabled={loading}>{loading ? "Saving…" : "Save Targets & Review →"}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 4: Review & Send */}
+      {step === "review" && (
+        <div style={card}>
+          <h3 style={h3}>Review & Send Invitations</h3>
+          <p style={{ fontSize: 14, color: "#374151", marginBottom: 20 }}>
+            Everything is set. Clicking "Send Invitations" will email each vendor with a unique negotiation link.
+            The AI bot will greet them automatically when they open the chat.
+          </p>
+          <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: 16, marginBottom: 20, fontSize: 13 }}>
+            <strong>What happens next:</strong>
+            <ul style={{ marginTop: 8, paddingLeft: 20, lineHeight: 1.8 }}>
+              <li>Each vendor receives a personalised email with a secure link</li>
+              <li>When vendor opens the link, the AI bot starts the negotiation automatically</li>
+              <li>You can monitor all conversations live in the negotiation dashboard</li>
+              <li>You'll receive an email alert for escalations and agreements</li>
+            </ul>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button style={btnBack} onClick={goBack}>← Back</button>
+            <button style={{ ...btn, padding: "12px 28px", fontSize: 15 }} onClick={handleSend} disabled={loading}>
+              {loading ? "Sending…" : "🚀 Send Invitations"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

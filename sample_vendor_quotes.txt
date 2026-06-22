@@ -1,0 +1,62 @@
+VENDOR QUOTE COMPARISON — Industrial Laptop Procurement
+Issued by: TechCorp Solutions Procurement Department
+RFQ Reference: RFQ-2025-TC-0042
+Item: Rugged Industrial Laptop (15.6", i7, 16GB RAM, 512GB SSD, IP65 rated)
+Quantity: 200 units
+Currency: USD
+
+---
+
+VENDOR 1: Apex Tech Systems
+Contact: James Whitfield
+Email: shivasaibandaru@gmail.com
+Company: Apex Tech Systems Pvt Ltd
+
+Unit Price: $1,480.00
+Delivery: 35 days from PO
+Payment Terms: Net-45
+Warranty: 24 months on-site
+Certifications: MIL-STD-810H, IP65
+Notes: Volume discount of 3% available for orders above 250 units. Includes pre-installed OS and asset tagging.
+
+---
+
+VENDOR 2: GlobalEdge Electronics
+Contact: Priya Nair
+Email: priya.nair@globaledge.com
+Company: GlobalEdge Electronics Ltd
+
+Unit Price: $1,395.00
+Delivery: 50 days from PO
+Payment Terms: Net-30
+Warranty: 12 months carry-in
+Certifications: IP65
+Notes: Lowest price in market. Extended warranty available at $85/unit extra. No customization options.
+
+---
+
+VENDOR 3: RobustTech Devices
+Contact: Mark Sullivan
+Email: mark.sullivan@robusttech.io
+Company: RobustTech Devices Inc
+
+Unit Price: $1,620.00
+Delivery: 28 days from PO
+Payment Terms: Net-60
+Warranty: 36 months on-site + accidental damage
+Certifications: MIL-STD-810H, IP65, ATEX Zone 2
+Notes: Premium tier product. Fastest delivery. Free spare parts kit (5% of order value) included. Dedicated account manager assigned.
+
+---
+
+VENDOR 4: DataShield Computers
+Contact: Liu Wei
+Email: liu.wei@datashield.cn
+Company: DataShield Computers Co.
+
+Unit Price: $1,290.00
+Delivery: 60 days from PO
+Payment Terms: Net-15 (advance 30%)
+Warranty: 18 months carry-in
+Certifications: IP54 (not IP65)
+Notes: Lowest unit price. Partial advance payment required. IP54 rating only — verify if sufficient for use case. Lead time subject to freight delays.
