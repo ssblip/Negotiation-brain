@@ -124,10 +124,6 @@ export default function BuyerDashboard() {
                       <div style={{ fontSize: 22, fontWeight: 700, color: "#2563eb" }}>{n.active_count}</div>
                       <div style={{ fontSize: 11, color: "#6b7280" }}>Chatting</div>
                     </div>
-                    <div>
-                      <div style={{ fontSize: 22, fontWeight: 700, color: "#059669" }}>{n.agreed_count}</div>
-                      <div style={{ fontSize: 11, color: "#6b7280" }}>Agreed</div>
-                    </div>
                   </div>
                 )}
               </div>

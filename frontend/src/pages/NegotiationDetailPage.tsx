@@ -263,18 +263,34 @@ export default function NegotiationDetailPage() {
                   ) : "—"}
                 </td>
                 {([
-                  { key: "price_score", label: "Price" },
-                  { key: "delivery_score", label: "Delivery" },
-                  { key: "payment_score", label: "Payment" },
-                  { key: "warranty_score", label: "Warranty" },
-                ] as const).map(({ key }) => {
+                  {
+                    key: "price_score" as const,
+                    val: () => { const v = vs.current_offer?.["price"] ?? vs.quoted_price; return v != null ? `${vs.quoted_currency} ${Number(v).toLocaleString()}` : null; },
+                  },
+                  {
+                    key: "delivery_score" as const,
+                    val: () => { const v = vs.current_offer?.["delivery_days"] ?? vs.quoted_delivery_days; return v != null ? `${v}d` : null; },
+                  },
+                  {
+                    key: "payment_score" as const,
+                    val: () => { const v = vs.current_offer?.["payment_days"] ?? vs.quoted_payment_days; return v != null ? `Net-${v}` : null; },
+                  },
+                  {
+                    key: "warranty_score" as const,
+                    val: () => { const v = vs.current_offer?.["warranty_months"] ?? vs.quoted_warranty_months; return v != null ? `${v}mo` : null; },
+                  },
+                ]).map(({ key, val }) => {
                   const score = vs[key];
+                  const numVal = val();
                   return (
                     <td key={key} style={{ padding: "12px 14px" }}>
                       {score != null ? (
-                        <span style={{ color: score >= 80 ? "#059669" : score >= 50 ? "#d97706" : "#dc2626", fontWeight: 600 }}>
-                          {score.toFixed(0)}%
-                        </span>
+                        <div>
+                          <div style={{ color: score >= 80 ? "#059669" : score >= 50 ? "#d97706" : "#dc2626", fontWeight: 700, fontSize: 13 }}>
+                            {score.toFixed(0)}%
+                          </div>
+                          {numVal && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 1 }}>{numVal}</div>}
+                        </div>
                       ) : "—"}
                     </td>
                   );

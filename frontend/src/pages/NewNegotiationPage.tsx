@@ -38,7 +38,6 @@ export default function NewNegotiationPage() {
   const [targets, setTargets] = useState({
     target_price: "", target_delivery_days: "",
     target_payment_days: "", warranty_months_target: "",
-    batna_description: "", batna_strength: "5",
   });
 
   type CustomSpec = { name: string; field_type: string; required_value: string; weight: string; unit: string };
@@ -89,8 +88,6 @@ export default function NewNegotiationPage() {
             target_delivery_days: existingTargets.target_delivery_days?.toString() ?? "",
             target_payment_days: existingTargets.target_payment_days?.toString() ?? "",
             warranty_months_target: existingTargets.warranty_months_target?.toString() ?? "",
-            batna_description: existingTargets.batna_description ?? "",
-            batna_strength: existingTargets.batna_strength?.toString() ?? "5",
           });
           if (existingTargets.custom_specs?.length) {
             setCustomSpecs(existingTargets.custom_specs.map((s: { name: string; field_type: string; required_value: unknown; weight: number; unit: string | null }) => ({
@@ -201,8 +198,6 @@ export default function NewNegotiationPage() {
         target_delivery_days: num(targets.target_delivery_days),
         target_payment_days: num(targets.target_payment_days),
         warranty_months_target: num(targets.warranty_months_target),
-        batna_description: targets.batna_description || null,
-        batna_strength: num(targets.batna_strength),
         // custom_specs preserved from Step 1 — backend merges them
       });
       setStep("review");
@@ -590,11 +585,6 @@ export default function NewNegotiationPage() {
               <input style={input} type="number" value={targets.warranty_months_target} onChange={setT("warranty_months_target")} placeholder="e.g. 24" />
             </div>
           </div>
-          <label style={label}>BATNA Description (alternative if talks fail)</label>
-          <textarea style={{ ...input, height: 64, resize: "vertical" } as React.CSSProperties} value={targets.batna_description} onChange={setT("batna_description")} placeholder="e.g. We have another supplier at $2.80 who can deliver in 45 days" />
-          <label style={label}>BATNA Strength (1–10)</label>
-          <input style={{ ...input, width: 80 }} type="number" min={1} max={10} value={targets.batna_strength} onChange={setT("batna_strength")} />
-
           {customSpecs.length > 0 && (
             <div style={{ marginTop: 20, borderTop: "1px solid #e5e7eb", paddingTop: 16 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: "#1e3a5f", marginBottom: 8 }}>
