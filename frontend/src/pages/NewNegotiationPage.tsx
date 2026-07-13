@@ -10,9 +10,9 @@ const btn: React.CSSProperties = { padding: "8px 18px", background: "#1e3a5f", c
 const btnGhost: React.CSSProperties = { ...btn, background: "transparent", color: "#1e3a5f", border: "1px solid #1e3a5f" };
 const btnBack: React.CSSProperties = { padding: "8px 14px", background: "transparent", color: "#6b7280", border: "1px solid #d1d5db", borderRadius: 6, fontWeight: 500, cursor: "pointer", fontSize: 14 };
 
-type Step = "basics" | "quotes" | "targets" | "review";
-const STEPS: Step[] = ["basics", "quotes", "targets", "review"];
-const STEP_LABELS = ["Basics", "Upload Quotes", "Set Targets", "Review & Send"];
+type Step = "basics" | "targets" | "quotes" | "review";
+const STEPS: Step[] = ["basics", "targets", "quotes", "review"];
+const STEP_LABELS = ["Basics", "Set Targets", "Upload Quotes", "Review & Send"];
 
 export default function NewNegotiationPage() {
   const nav = useNavigate();
@@ -29,8 +29,8 @@ export default function NewNegotiationPage() {
   // Step 1 — Basics
   const [basics, setBasics] = useState({ title: "", item: "", quantity: 1, currency: "USD" });
 
-  // Step 2 — Quote file + parsed vendors
-  const [quoteFile, setQuoteFile] = useState<File | null>(null);
+  // Step 3 — Quote files + parsed vendors
+  const [quoteFiles, setQuoteFiles] = useState<File[]>([]);
   const [vendors, setVendors] = useState<VendorQuote[]>([]);
   const [parsing, setParsing] = useState(false);
 
@@ -40,12 +40,12 @@ export default function NewNegotiationPage() {
     target_payment_days: "", warranty_months_target: "",
   });
 
-  type CustomSpec = { name: string; field_type: string; required_value: string; weight: string; unit: string };
-  const BLANK_SPEC: CustomSpec = { name: "", field_type: "NUM", required_value: "", weight: "1", unit: "" };
+  type CustomSpec = { name: string; field_type: string; required_value: string; weight: string; unit: string; mandatory: boolean };
+  const BLANK_SPEC: CustomSpec = { name: "", field_type: "NUM", required_value: "", weight: "1", unit: "", mandatory: false };
   const [customSpecs, setCustomSpecs] = useState<CustomSpec[]>([]);
 
   function setT(k: string) { return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setTargets(t => ({ ...t, [k]: e.target.value })); }
-  function setSpec(idx: number, k: keyof CustomSpec, v: string) {
+  function setSpec(idx: number, k: keyof CustomSpec, v: string | boolean) {
     setCustomSpecs(ss => ss.map((s, i) => i === idx ? { ...s, [k]: v } : s));
   }
 
@@ -90,19 +90,20 @@ export default function NewNegotiationPage() {
             warranty_months_target: existingTargets.warranty_months_target?.toString() ?? "",
           });
           if (existingTargets.custom_specs?.length) {
-            setCustomSpecs(existingTargets.custom_specs.map((s: { name: string; field_type: string; required_value: unknown; weight: number; unit: string | null }) => ({
+            setCustomSpecs(existingTargets.custom_specs.map((s: { name: string; field_type: string; required_value: unknown; weight: number; unit: string | null; mandatory?: boolean }) => ({
               name: s.name,
               field_type: s.field_type,
               required_value: String(s.required_value ?? ""),
               weight: String(s.weight ?? 1),
               unit: s.unit ?? "",
+              mandatory: s.mandatory ?? false,
             })));
           }
           setStep("review");
-        } else if (existingVendors.length > 0) {
-          setStep("targets");
-        } else {
+        } else if (existingTargets) {
           setStep("quotes");
+        } else {
+          setStep("targets");
         }
       } catch {
         setErr("Could not load draft negotiation.");
@@ -132,32 +133,16 @@ export default function NewNegotiationPage() {
         id = neg.id;
         setNegId(id);
       }
-      // Save custom specs immediately so the parser can use them in Step 2
-      await api.setTargets(id!, {
-        custom_specs: customSpecs
-          .filter(s => s.name.trim())
-          .map(s => ({
-            name: s.name.trim(),
-            field_type: s.field_type,
-            required_value: s.field_type === "NUM" || s.field_type === "PCTNUM"
-              ? Number(s.required_value)
-              : s.field_type === "BOOL"
-              ? s.required_value.toLowerCase() === "true"
-              : s.required_value,
-            weight: Number(s.weight) || 1,
-            unit: s.unit || null,
-          })),
-      });
-      setStep("quotes");
+      setStep("targets");
     } catch (e: unknown) { setErr(e instanceof Error ? e.message : "Error"); }
     finally { setLoading(false); }
   }
 
   async function handleParseQuotes() {
-    if (!quoteFile || !negId) return setErr("Please select a file");
+    if (quoteFiles.length === 0 || !negId) return setErr("Please select at least one file");
     setParsing(true); setErr("");
     try {
-      const result = await api.parseQuotes(negId, quoteFile);
+      const result = await api.parseQuotes(negId, quoteFiles);
       console.log("Parsed vendors:", JSON.stringify(result.vendors, null, 2));
       setVendors(result.vendors.map(v => ({ ...v, vendor_email: v.vendor_email || "" })));
       setParsing(false);
@@ -183,7 +168,7 @@ export default function NewNegotiationPage() {
     setLoading(true); setErr("");
     try {
       await api.addVendors(negId, vendors);
-      setStep("targets");
+      setStep("review");
     } catch (e: unknown) { setErr(e instanceof Error ? e.message : "Error"); }
     finally { setLoading(false); }
   }
@@ -198,9 +183,22 @@ export default function NewNegotiationPage() {
         target_delivery_days: num(targets.target_delivery_days),
         target_payment_days: num(targets.target_payment_days),
         warranty_months_target: num(targets.warranty_months_target),
-        // custom_specs preserved from Step 1 — backend merges them
+        custom_specs: customSpecs
+          .filter(s => s.name.trim())
+          .map(s => ({
+            name: s.name.trim(),
+            field_type: s.field_type,
+            required_value: s.field_type === "NUM" || s.field_type === "PCTNUM"
+              ? Number(s.required_value)
+              : s.field_type === "BOOL"
+              ? s.required_value.toLowerCase() === "true"
+              : s.required_value,
+            weight: Number(s.weight) || 1,
+            unit: s.unit || null,
+            mandatory: s.mandatory,
+          })),
       });
-      setStep("review");
+      setStep("quotes");
     } catch (e: unknown) { setErr(e instanceof Error ? e.message : "Error"); }
     finally { setLoading(false); }
   }
@@ -267,88 +265,37 @@ export default function NewNegotiationPage() {
               <input style={input} value={basics.currency} onChange={e => setBasics(b => ({ ...b, currency: e.target.value }))} placeholder="USD" />
             </div>
           </div>
-          {/* Custom Specs — defined here so parser can extract matching values */}
-          <div style={{ marginTop: 20, borderTop: "1px solid #e5e7eb", paddingTop: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "#1e3a5f" }}>Required Specifications</div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
-                  Define specs now — the AI will extract each vendor's values when parsing the quote document.
-                </div>
-              </div>
-              <button onClick={() => setCustomSpecs(ss => [...ss, { ...BLANK_SPEC }])}
-                style={{ padding: "5px 12px", background: "#f0f9ff", color: "#1e3a5f", border: "1px solid #bae6fd", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
-                + Add Spec
-              </button>
-            </div>
-
-            {customSpecs.length === 0 && (
-              <div style={{ fontSize: 13, color: "#9ca3af", fontStyle: "italic", padding: "8px 0 12px" }}>
-                No specs yet — e.g. IP Rating, MIL-STD-810H, ISO 9001, Defect Rate…
-              </div>
-            )}
-
-            {customSpecs.map((s, si) => (
-              <div key={si} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, marginBottom: 8 }}>
-                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr 0.5fr 0.5fr auto", gap: 8, alignItems: "end" }}>
-                  <div>
-                    <label style={{ ...label, marginBottom: 2 }}>Spec Name</label>
-                    <input style={{ ...input, marginBottom: 0 }} value={s.name} onChange={e => setSpec(si, "name", e.target.value)} placeholder="e.g. IP Rating" />
-                  </div>
-                  <div>
-                    <label style={{ ...label, marginBottom: 2 }}>Type</label>
-                    <select style={{ ...input, marginBottom: 0 }} value={s.field_type} onChange={e => setSpec(si, "field_type", e.target.value)}>
-                      <option value="NUM">Number</option>
-                      <option value="BOOL">Yes/No</option>
-                      <option value="CAT">Category</option>
-                      <option value="MULTI">Multi-select</option>
-                      <option value="PCTNUM">Percentage</option>
-                      <option value="TIER">Tier</option>
-                      <option value="TEXT">Text</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ ...label, marginBottom: 2 }}>Required Value</label>
-                    {s.field_type === "BOOL" ? (
-                      <select style={{ ...input, marginBottom: 0 }} value={s.required_value} onChange={e => setSpec(si, "required_value", e.target.value)}>
-                        <option value="true">Yes / True</option>
-                        <option value="false">No / False</option>
-                      </select>
-                    ) : (
-                      <input style={{ ...input, marginBottom: 0 }} value={s.required_value} onChange={e => setSpec(si, "required_value", e.target.value)} placeholder={s.field_type === "NUM" ? "e.g. 65" : "e.g. IP65"} />
-                    )}
-                  </div>
-                  <div>
-                    <label style={{ ...label, marginBottom: 2 }}>Unit</label>
-                    <input style={{ ...input, marginBottom: 0 }} value={s.unit} onChange={e => setSpec(si, "unit", e.target.value)} placeholder="opt." />
-                  </div>
-                  <div>
-                    <label style={{ ...label, marginBottom: 2 }}>Weight</label>
-                    <input style={{ ...input, marginBottom: 0 }} type="number" min="0.1" step="0.1" value={s.weight} onChange={e => setSpec(si, "weight", e.target.value)} />
-                  </div>
-                  <button onClick={() => setCustomSpecs(ss => ss.filter((_, j) => j !== si))}
-                    style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 20, paddingBottom: 2 }}>×</button>
-                </div>
-              </div>
-            ))}
-          </div>
-
           <button style={{ ...btn, marginTop: 8 }} onClick={handleBasics} disabled={loading}>
             {loading ? "Saving…" : negId ? "Update & Continue →" : "Next →"}
           </button>
         </div>
       )}
 
-      {/* Step 2: Upload quotes */}
+      {/* Step 3: Upload RFQ responses */}
       {step === "quotes" && (
         <div style={card}>
-          <h3 style={h3}>Upload Vendor Quotes Document</h3>
+          <h3 style={h3}>Upload Vendor Quote Documents</h3>
           <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
-            Upload the single document containing all vendor quotes. AI will extract each vendor's data automatically.
+            Upload one file per vendor, or a single document containing all quotes. AI will extract each vendor's data automatically.
           </p>
-          <input type="file" accept=".pdf,.docx,.xlsx,.txt" onChange={e => setQuoteFile(e.target.files?.[0] || null)} style={{ marginBottom: 12 }} />
-          <button style={{ ...btnGhost, marginBottom: 20 }} onClick={handleParseQuotes} disabled={parsing || !quoteFile}>
-            {parsing ? "Parsing with AI…" : "Parse Document"}
+          <input
+            type="file"
+            accept=".pdf,.docx,.xlsx,.txt"
+            multiple
+            onChange={e => setQuoteFiles(Array.from(e.target.files || []))}
+            style={{ marginBottom: 8 }}
+          />
+          {quoteFiles.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+              {quoteFiles.map((f, i) => (
+                <span key={i} style={{ fontSize: 11, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 99, padding: "2px 10px" }}>
+                  {f.name}
+                </span>
+              ))}
+            </div>
+          )}
+          <button style={{ ...btnGhost, marginBottom: 20 }} onClick={handleParseQuotes} disabled={parsing || quoteFiles.length === 0}>
+            {parsing ? "Parsing with AI…" : `Parse ${quoteFiles.length > 1 ? `${quoteFiles.length} Documents` : "Document"}`}
           </button>
 
           {vendors.length > 0 && (
@@ -560,12 +507,12 @@ export default function NewNegotiationPage() {
         </div>
       )}
 
-      {/* Step 3: Targets */}
+      {/* Step 2: Targets */}
       {step === "targets" && (
         <div style={card}>
           <h3 style={h3}>Set Negotiation Targets</h3>
           <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
-            These are INTERNAL — the AI bot will never reveal them to vendors.
+            These are INTERNAL — the AI bot will never reveal them to vendors. Set these before sending your RFQ.
           </p>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
@@ -585,32 +532,99 @@ export default function NewNegotiationPage() {
               <input style={input} type="number" value={targets.warranty_months_target} onChange={setT("warranty_months_target")} placeholder="e.g. 24" />
             </div>
           </div>
-          {customSpecs.length > 0 && (
-            <div style={{ marginTop: 20, borderTop: "1px solid #e5e7eb", paddingTop: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#1e3a5f", marginBottom: 8 }}>
-                Required Specifications ({customSpecs.length})
+
+          {/* Required Specifications — defined here before RFQ goes out */}
+          <div style={{ marginTop: 20, borderTop: "1px solid #e5e7eb", paddingTop: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#1e3a5f" }}>Required Specifications</div>
+                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                  Define before sending the RFQ — the AI will extract each vendor's values when parsing their responses.
+                </div>
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {customSpecs.map((s, si) => (
-                  <span key={si} style={{ fontSize: 12, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #bfdbfe", borderRadius: 99, padding: "3px 10px" }}>
-                    {s.name}: {s.required_value}{s.unit ? ` ${s.unit}` : ""}
-                  </span>
-                ))}
-              </div>
-              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 6 }}>
-                Specs defined in Step 1 — vendor values were extracted during document parsing.
-              </div>
+              <button onClick={() => setCustomSpecs(ss => [...ss, { ...BLANK_SPEC }])}
+                style={{ padding: "5px 12px", background: "#f0f9ff", color: "#1e3a5f", border: "1px solid #bae6fd", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                + Add Spec
+              </button>
             </div>
-          )}
+
+            {customSpecs.length === 0 && (
+              <div style={{ fontSize: 13, color: "#9ca3af", fontStyle: "italic", padding: "8px 0 12px" }}>
+                No specs yet — e.g. IP Rating, MIL-STD-810H, ISO 9001, Defect Rate…
+              </div>
+            )}
+
+            {customSpecs.map((s, si) => (
+              <div key={si} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, marginBottom: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1.5fr 0.5fr 0.5fr auto", gap: 8, alignItems: "end" }}>
+                  <div>
+                    <label style={{ ...label, marginBottom: 2 }}>Spec Name</label>
+                    <input style={{ ...input, marginBottom: 0 }} value={s.name} onChange={e => setSpec(si, "name", e.target.value)} placeholder="e.g. IP Rating" />
+                  </div>
+                  <div>
+                    <label style={{ ...label, marginBottom: 2 }}>Type</label>
+                    <select style={{ ...input, marginBottom: 0 }} value={s.field_type} onChange={e => setSpec(si, "field_type", e.target.value)}>
+                      <option value="NUM">Number</option>
+                      <option value="BOOL">Yes/No</option>
+                      <option value="CAT">Category</option>
+                      <option value="MULTI">Multi-select</option>
+                      <option value="PCTNUM">Percentage</option>
+                      <option value="TIER">Tier</option>
+                      <option value="TEXT">Text</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ ...label, marginBottom: 2 }}>Required Value</label>
+                    {s.field_type === "BOOL" ? (
+                      <select style={{ ...input, marginBottom: 0 }} value={s.required_value} onChange={e => setSpec(si, "required_value", e.target.value)}>
+                        <option value="true">Yes / True</option>
+                        <option value="false">No / False</option>
+                      </select>
+                    ) : (
+                      <input style={{ ...input, marginBottom: 0 }} value={s.required_value} onChange={e => setSpec(si, "required_value", e.target.value)} placeholder={s.field_type === "NUM" ? "e.g. 65" : "e.g. IP65"} />
+                    )}
+                  </div>
+                  <div>
+                    <label style={{ ...label, marginBottom: 2 }}>Unit</label>
+                    <input style={{ ...input, marginBottom: 0 }} value={s.unit} onChange={e => setSpec(si, "unit", e.target.value)} placeholder="opt." />
+                  </div>
+                  <div>
+                    <label style={{ ...label, marginBottom: 2 }}>Weight</label>
+                    <input style={{ ...input, marginBottom: 0 }} type="number" min="0.1" step="0.1" value={s.weight} onChange={e => setSpec(si, "weight", e.target.value)} />
+                  </div>
+                  <button onClick={() => setCustomSpecs(ss => ss.filter((_, j) => j !== si))}
+                    style={{ background: "none", border: "none", color: "#dc2626", cursor: "pointer", fontSize: 20, paddingBottom: 2 }}>×</button>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                  <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>Importance:</span>
+                  <button
+                    type="button"
+                    onClick={() => setSpec(si, "mandatory", !s.mandatory)}
+                    style={{
+                      padding: "3px 14px", borderRadius: 99, border: "1.5px solid", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                      background: s.mandatory ? "#fef2f2" : "#f0fdf4",
+                      color: s.mandatory ? "#dc2626" : "#059669",
+                      borderColor: s.mandatory ? "#fca5a5" : "#86efac",
+                    }}
+                  >
+                    {s.mandatory ? "Must Have" : "Good to Have"}
+                  </button>
+                  {s.mandatory && (
+                    <span style={{ fontSize: 11, color: "#9a3412", fontStyle: "italic" }}>Vendor will require qualification review if they don't meet this</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
 
           <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
             <button style={btnBack} onClick={goBack}>← Back</button>
-            <button style={btn} onClick={handleTargets} disabled={loading}>{loading ? "Saving…" : "Save Targets & Review →"}</button>
+            <button style={btn} onClick={handleTargets} disabled={loading}>{loading ? "Saving…" : "Save & Prepare RFQ →"}</button>
           </div>
         </div>
       )}
 
-      {/* Step 4: Review & Send */}
+      {/* Step 4: Review & Send invitations */}
       {step === "review" && (
         <div style={card}>
           <h3 style={h3}>Review & Send Invitations</h3>

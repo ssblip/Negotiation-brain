@@ -68,6 +68,7 @@ class CustomSpec(BaseModel):
     required_value: Any
     weight: float = 1.0
     unit: str | None = None
+    mandatory: bool = False
 
 
 class BuyerTargetsIn(BaseModel):
@@ -141,6 +142,8 @@ class VendorSessionOut(BaseModel):
     first_response_at: datetime | None
     closed_at: datetime | None
     has_pending_escalation: bool = False
+    mandatory_failures: list[str] | None = None
+    buyer_override: bool = False
 
     model_config = {"from_attributes": True}
 

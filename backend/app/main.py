@@ -46,6 +46,7 @@ from app.scorer import (
     compute_cvs,
     compute_initial_concession_budget,
     compute_spec_score,
+    get_mandatory_failures,
     select_strategy,
     _price_dim_score,
     _delivery_dim_score,
@@ -63,6 +64,8 @@ with engine.connect() as _conn:
         "ALTER TABLE users ADD COLUMN strategy_doc_condensed TEXT",
         "ALTER TABLE vendor_sessions ADD COLUMN priority TEXT",
         "ALTER TABLE negotiations ADD COLUMN strategy_doc_condensed TEXT",
+        "ALTER TABLE vendor_sessions ADD COLUMN mandatory_failures JSON",
+        "ALTER TABLE vendor_sessions ADD COLUMN buyer_override INTEGER DEFAULT 0",
     ]:
         try:
             _conn.execute(_sql_text(_stmt))
@@ -253,13 +256,16 @@ async def parse_quote_document(
     nid: int,
     buyer: Annotated[User, Depends(require_buyer)],
     db: Annotated[Session, Depends(get_db)],
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
 ):
-    """Upload the multi-vendor quote document. Returns parsed vendor list for buyer review."""
+    """Upload one or more vendor quote documents. Returns parsed vendor list for buyer review."""
     _get_neg(nid, buyer.id, db)
-    content = await file.read()
-    raw_text = extract_text_from_file(file.filename or "quotes.pdf", content)
-    # Explicitly query targets — don't rely on lazy-loaded relationship
+    parts: list[str] = []
+    for f in files:
+        content = await f.read()
+        text = extract_text_from_file(f.filename or "quotes.pdf", content)
+        parts.append(f"--- [{f.filename}] ---\n{text}")
+    raw_text = "\n\n".join(parts)
     targets = db.query(BuyerTargets).filter(BuyerTargets.negotiation_id == nid).first()
     custom_specs = targets.custom_specs if targets and targets.custom_specs else []
     vendors = parse_vendors_from_text(raw_text, custom_specs=custom_specs)
@@ -341,6 +347,7 @@ def add_vendors(
 
         # Compute scores
         custom_specs = targets.custom_specs if targets else []
+        failures = get_mandatory_failures(custom_specs or [], v.custom_spec_values)
         spec_score = compute_spec_score(custom_specs or [], v.custom_spec_values)
         cvs = compute_cvs(
             spec_score,
@@ -352,10 +359,13 @@ def add_vendors(
         strategy = select_strategy(spec_score, v.quoted_price, targets.target_price if targets else None)
         budget = compute_initial_concession_budget(v.quoted_price, targets.target_price if targets else None, targets.reservation_price if targets else None)
 
+        vs.mandatory_failures = failures or None
         vs.spec_score = spec_score
         vs.cvs_score = cvs
         vs.strategy = strategy
         vs.concession_budget = budget
+        if failures and not vs.buyer_override:
+            vs.status = "pending_qualification"
         vs.current_offer = {
             "price": v.quoted_price,
             "delivery_days": v.quoted_delivery_days,
@@ -402,6 +412,30 @@ def set_vendor_priority(
     if priority not in (None, "P1", "P2", "P3"):
         raise HTTPException(status_code=400, detail="priority must be P1, P2, P3, or null")
     vs.priority = priority
+    db.commit()
+    db.refresh(vs)
+    return _vs_out(vs, db)
+
+
+@app.patch("/api/negotiations/{nid}/vendors/{vsid}/override", response_model=schemas.VendorSessionOut)
+def override_vendor_qualification(
+    nid: int,
+    vsid: int,
+    body: dict,
+    buyer: Annotated[User, Depends(require_buyer)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Buyer overrides the bot's qualification recommendation for a vendor."""
+    _get_neg(nid, buyer.id, db)
+    vs = db.query(VendorSession).filter(VendorSession.id == vsid, VendorSession.negotiation_id == nid).first()
+    if not vs:
+        raise HTTPException(status_code=404, detail="Vendor session not found")
+    override = bool(body.get("override", False))
+    vs.buyer_override = override
+    if override and vs.status == "pending_qualification":
+        vs.status = "invited"
+    elif not override and vs.mandatory_failures:
+        vs.status = "pending_qualification"
     db.commit()
     db.refresh(vs)
     return _vs_out(vs, db)
@@ -578,7 +612,7 @@ def start_negotiation_chat(token: str, db: Annotated[Session, Depends(get_db)]):
 def vendor_chat(token: str, body: schemas.VendorChatIn, db: Annotated[Session, Depends(get_db)]):
     vs = _get_vs_by_token(token, db)
 
-    if vs.status in ("rejected", "closed"):
+    if vs.status in ("rejected", "closed", "pending_qualification"):
         raise HTTPException(400, f"This negotiation is already {vs.status}.")
 
     try:
@@ -654,7 +688,7 @@ def vendor_account_chat(
     vs = _get_vs(vsid, db)
     if vs.vendor_id != vendor.id:
         raise HTTPException(403)
-    if vs.status in ("rejected", "closed"):
+    if vs.status in ("rejected", "closed", "pending_qualification"):
         raise HTTPException(400, f"This negotiation is already {vs.status}.")
 
     if vs.current_state == "not_started":

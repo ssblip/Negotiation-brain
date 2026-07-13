@@ -40,9 +40,9 @@ export interface User { id: number; email: string; display_name: string; company
 export interface TokenOut { access_token: string; user: User; }
 export interface Negotiation { id: number; title: string; item: string; quantity: number; currency: string; status: string; created_at: string; vendor_count: number; active_count: number; agreed_count: number; }
 export interface BuyerTargets { id: number; negotiation_id: number; target_price: number | null; reservation_price: number | null; target_delivery_days: number | null; max_delivery_days: number | null; target_payment_days: number | null; min_payment_days: number | null; warranty_months_target: number | null; warranty_months_min: number | null; batna_description: string | null; batna_strength: number | null; custom_specs: CustomSpec[]; }
-export interface CustomSpec { name: string; field_type: string; required_value: unknown; weight: number; unit: string | null; }
+export interface CustomSpec { name: string; field_type: string; required_value: unknown; weight: number; unit: string | null; mandatory: boolean; }
 export interface VendorQuote { vendor_email: string; vendor_company: string | null; vendor_name: string | null; quoted_price: number | null; quoted_delivery_days: number | null; quoted_payment_days: number | null; quoted_warranty_months: number | null; quoted_currency: string; custom_spec_values: Record<string, unknown> | null; }
-export interface VendorSession { id: number; negotiation_id: number; negotiation_title: string | null; negotiation_item: string | null; negotiation_quantity: number | null; negotiation_currency: string | null; buyer_company: string | null; vendor_email: string; vendor_company: string | null; vendor_name: string | null; quoted_price: number | null; quoted_delivery_days: number | null; quoted_payment_days: number | null; quoted_warranty_months: number | null; quoted_currency: string; custom_spec_values: Record<string, unknown> | null; priority: "P1" | "P2" | "P3" | null; spec_score: number | null; cvs_score: number | null; price_score: number | null; delivery_score: number | null; payment_score: number | null; warranty_score: number | null; strategy: string | null; current_state: string; round_count: number; current_offer: Record<string, number | null> | null; final_price: number | null; final_delivery_days: number | null; final_payment_days: number | null; status: string; invited_at: string; first_response_at: string | null; closed_at: string | null; has_pending_escalation: boolean; }
+export interface VendorSession { id: number; negotiation_id: number; negotiation_title: string | null; negotiation_item: string | null; negotiation_quantity: number | null; negotiation_currency: string | null; buyer_company: string | null; vendor_email: string; vendor_company: string | null; vendor_name: string | null; quoted_price: number | null; quoted_delivery_days: number | null; quoted_payment_days: number | null; quoted_warranty_months: number | null; quoted_currency: string; custom_spec_values: Record<string, unknown> | null; priority: "P1" | "P2" | "P3" | null; spec_score: number | null; cvs_score: number | null; price_score: number | null; delivery_score: number | null; payment_score: number | null; warranty_score: number | null; strategy: string | null; current_state: string; round_count: number; current_offer: Record<string, number | null> | null; final_price: number | null; final_delivery_days: number | null; final_payment_days: number | null; status: string; invited_at: string; first_response_at: string | null; closed_at: string | null; has_pending_escalation: boolean; mandatory_failures: string[] | null; buyer_override: boolean; }
 export interface Message { id: number; role: string; content: string; round_number: number; created_at: string; }
 export interface Escalation { id: number; vendor_session_id: number; negotiation_id: number; reason: string; context_summary: string | null; status: string; buyer_decision: string | null; created_at: string; }
 export interface VendorContext { vendor_session_id: number; negotiation_id: number; item: string; quantity: number; currency: string; buyer_company: string | null; vendor_company: string | null; vendor_name: string | null; quoted_price: number | null; quoted_delivery_days: number | null; quoted_payment_days: number | null; status: string; current_state: string; round_count: number; current_offer: Record<string, number | null> | null; }
@@ -81,8 +81,9 @@ export const api = {
 
   getStrategyDocStatus: () => req<{ uploaded: boolean; chars: number }>("/me/strategy-doc-status"),
 
-  parseQuotes: (nid: number, file: File) => {
-    const fd = new FormData(); fd.append("file", file);
+  parseQuotes: (nid: number, files: File[]) => {
+    const fd = new FormData();
+    files.forEach(f => fd.append("files", f));
     return upload<ParsedVendors>(`/negotiations/${nid}/parse-quotes`, fd);
   },
 
@@ -98,6 +99,9 @@ export const api = {
 
   setVendorPriority: (nid: number, vsid: number, priority: "P1" | "P2" | "P3" | null) =>
     req<VendorSession>(`/negotiations/${nid}/vendors/${vsid}/priority`, { method: "PATCH", body: JSON.stringify({ priority }) }),
+
+  overrideVendorQualification: (nid: number, vsid: number, override: boolean) =>
+    req<VendorSession>(`/negotiations/${nid}/vendors/${vsid}/override`, { method: "PATCH", body: JSON.stringify({ override }) }),
 
   sendInvitations: (nid: number) =>
     req<{ sent: number; total: number }>(`/negotiations/${nid}/send-invitations`, { method: "POST" }),

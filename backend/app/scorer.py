@@ -66,23 +66,42 @@ def _score_single_spec(field_type: str, vendor_val: Any, required_val: Any) -> f
     return 50.0
 
 
+def get_mandatory_failures(custom_specs: list[dict], custom_spec_values: dict[str, Any] | None) -> list[str]:
+    """Return names of Must Have specs that the vendor failed (score == 0)."""
+    vendor_vals = custom_spec_values or {}
+    failures = []
+    for spec in custom_specs:
+        if not spec.get("mandatory", False):
+            continue
+        name = spec["name"]
+        field_type = spec.get("field_type", "TEXT")
+        required_val = spec.get("required_value")
+        vendor_val = vendor_vals.get(name)
+        if _score_single_spec(field_type, vendor_val, required_val) == 0.0:
+            failures.append(name)
+    return failures
+
+
 def compute_spec_score(custom_specs: list[dict], custom_spec_values: dict[str, Any] | None) -> float:
     """
-    custom_specs: buyer's spec requirements [{name, field_type, required_value, weight}]
-    custom_spec_values: vendor's provided values {name: value}
-    Returns 0–100.
+    Weighted average of Good to Have specs only (0–100).
+    Must Have specs are gated separately via get_mandatory_failures().
     """
     if not custom_specs:
         return 100.0
 
-    total_weight = sum(s.get("weight", 1.0) for s in custom_specs)
+    goodtohave = [s for s in custom_specs if not s.get("mandatory", False)]
+    if not goodtohave:
+        return 100.0
+
+    total_weight = sum(s.get("weight", 1.0) for s in goodtohave)
     if total_weight == 0:
         return 100.0
 
     weighted_sum = 0.0
     vendor_vals = custom_spec_values or {}
 
-    for spec in custom_specs:
+    for spec in goodtohave:
         name = spec["name"]
         field_type = spec.get("field_type", "TEXT")
         required_val = spec.get("required_value")

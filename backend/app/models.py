@@ -142,8 +142,11 @@ class VendorSession(Base):
 
     priority: Mapped[str | None] = mapped_column(String, nullable=True)  # P1 | P2 | P3 | None
 
+    mandatory_failures: Mapped[list | None] = mapped_column(JSON, nullable=True)  # spec names that failed Must Have gate
+    buyer_override: Mapped[bool] = mapped_column(Boolean, default=False)  # buyer chose to include despite failures
+
     status: Mapped[str] = mapped_column(String, default="invited")
-    # invited|chatting|agreed|escalated|rejected|expired
+    # invited|chatting|agreed|escalated|rejected|expired|pending_qualification
 
     invited_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     first_response_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
