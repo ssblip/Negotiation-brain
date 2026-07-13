@@ -27,7 +27,17 @@ def _score_bool(vendor_val: Any, required_val: Any) -> float:
 
 
 def _score_cat(vendor_val: Any, required_val: Any) -> float:
-    return 100.0 if str(vendor_val).strip().lower() == str(required_val).strip().lower() else 0.0
+    if vendor_val is None:
+        return 0.0
+    v = str(vendor_val).strip()
+    r = str(required_val).strip()
+    if not r:
+        return 100.0
+    if v.lower() == r.lower():
+        return 100.0
+    # Handle comma-separated lists (e.g. "MIL-STD-810H, IP65" vs required "IP65")
+    parts = [p.strip() for p in v.split(",")]
+    return 100.0 if any(p.lower() == r.lower() for p in parts) else 0.0
 
 
 def _score_multi(vendor_val: Any, required_val: Any) -> float:

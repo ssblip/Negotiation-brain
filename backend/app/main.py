@@ -395,6 +395,21 @@ def list_vendors(
 ):
     _get_neg(nid, buyer.id, db)
     rows = db.query(VendorSession).filter(VendorSession.negotiation_id == nid).all()
+    targets = db.query(BuyerTargets).filter(BuyerTargets.negotiation_id == nid).first()
+    custom_specs = targets.custom_specs if targets else []
+    if custom_specs:
+        changed = False
+        for vs in rows:
+            failures = get_mandatory_failures(custom_specs, vs.custom_spec_values) or None
+            if vs.mandatory_failures != failures:
+                vs.mandatory_failures = failures
+                if failures and not vs.buyer_override and vs.status not in ("rejected", "closed", "awarded"):
+                    vs.status = "pending_qualification"
+                elif not failures and vs.status == "pending_qualification":
+                    vs.status = "invited"
+                changed = True
+        if changed:
+            db.commit()
     return [_vs_out(vs, db) for vs in rows]
 
 
