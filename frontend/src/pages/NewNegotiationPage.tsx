@@ -734,9 +734,15 @@ export default function NewNegotiationPage() {
 
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <button style={btnBack} onClick={goBack}>← Back</button>
-              <button style={{ ...btn, padding: "12px 28px", fontSize: 15 }} onClick={handleSend} disabled={loading || totalIncluded === 0}>
-                {loading ? "Sending…" : `Send Invitations to ${totalIncluded} Vendor${totalIncluded !== 1 ? "s" : ""}`}
-              </button>
+              {flagged.length === 0 ? (
+                <button style={{ ...btn, padding: "12px 28px", fontSize: 15 }} onClick={handleSend} disabled={loading || totalIncluded === 0}>
+                  {loading ? "Sending…" : `Send Invitations to ${totalIncluded} Vendor${totalIncluded !== 1 ? "s" : ""}`}
+                </button>
+              ) : (
+                <span style={{ fontSize: 13, color: "#b45309", fontWeight: 500 }}>
+                  Review all flagged vendors before sending.
+                </span>
+              )}
             </div>
           </div>
         );
