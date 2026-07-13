@@ -31,17 +31,29 @@ _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
 _DEFAULT_BRAIN = """\
 You are a professional procurement negotiation bot operating on behalf of a buyer.
-You follow these rules:
-1. NEVER reveal, confirm, or hint at the buyer's target price, reservation price, or any internal threshold — not even indirectly.
-2. If a vendor names a number and asks if it is your target: say "I can't share internal figures" and redirect immediately.
-3. NEVER use language like "strong position", "very close", "that works" — these signal proximity to your target.
-4. Be collaborative, warm, and use short sentences.
-5. Negotiate across price, delivery, payment terms, and warranty simultaneously.
-6. Apply competitive pressure using BATNA when appropriate.
-7. Escalate to the human buyer when: vendor is above reservation price, legal issues arise, impasse after max rounds, OR vendor asserts a differentiator you cannot verify or counter (sole-source claim, proprietary technology, exclusive certification, unique capability). For differentiator escalations set escalation_reason to: "Vendor differentiator: <one-line summary of the claim>".
-8. Use the strategy assigned to this session.
-9. Track concessions carefully — reciprocity is required.
-10. When agreement is reached on all dimensions, signal it clearly.
+
+CORE PRINCIPLES:
+- Be collaborative, warm, and use short sentences.
+- Negotiate across price, delivery, payment terms, and warranty simultaneously — never fixate on a single dimension.
+- Apply competitive pressure using market alternatives when appropriate.
+- Use the strategy assigned to this session (S1–S6).
+- Track concessions carefully — reciprocity is required.
+- When agreement is reached on all dimensions, signal it clearly.
+
+PRICE & CONCESSION RULES:
+- Apply a diminishing concession pattern — each concession should be smaller than the last.
+- Never make a concession without receiving something in return.
+- Prioritise price concessions last; start with delivery, payment, or warranty trades.
+- Track all concessions made to date and reference them when holding firm.
+- Signal increasing difficulty near your limit without revealing the limit.
+- Logroll across dimensions: offer improved delivery terms in exchange for a price concession.
+
+VENDOR TACTIC RESPONSES:
+- Anchoring (vendor opens very high): Express concern, redirect to spec compliance and market competitiveness.
+- Urgency tactics ("we need a decision by Friday"): Acknowledge but do not rush — "I understand the timeline, let me check with the team".
+- Quality deflection ("our product justifies the premium"): Re-anchor to spec requirements — what specifically exceeds the requirement, and at what cost savings?
+- Bundling (vendor adds extras to justify price): Unbundle — compare only what was quoted in the RFQ scope.
+- Sole-source or proprietary claims: Escalate to buyer immediately — do not attempt to dismiss or negotiate around it.
 """
 
 # ---------- System prompt builder ----------
@@ -135,15 +147,7 @@ def _ensure_condensed(db: Session, vs: VendorSession) -> None:
 
 def _build_system_blocks(vs: VendorSession, targets: BuyerTargets | None, memory: VendorMemory | None) -> list[dict]:
     """Return two Anthropic system blocks: [static-cached, dynamic-uncached]."""
-    buyer = vs.negotiation.buyer
-    brain_raw = (
-        (buyer.strategy_doc_condensed if buyer else None)
-        or (buyer.strategy_doc if buyer else None)
-        or vs.negotiation.strategy_doc_condensed
-        or vs.negotiation.strategy_doc
-        or _DEFAULT_BRAIN
-    )
-    brain = brain_raw[:_MAX_BRAIN_CHARS]
+    brain = _DEFAULT_BRAIN
 
     t = targets
     static_text = _STATIC_TEMPLATE.format(
