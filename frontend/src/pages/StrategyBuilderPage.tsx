@@ -4,35 +4,19 @@ import { api } from "../api";
 const SECTIONS = [
   {
     key: "Core Principles",
-    description: "Non-negotiable rules the bot follows in every conversation.",
+    description: "Tone, style, and ground rules the bot applies in every conversation.",
   },
   {
-    key: "Price Negotiation Rules",
-    description: "How to handle price anchors, guesses, and counter-offers.",
-  },
-  {
-    key: "Concession Strategy",
-    description: "Pacing, sequencing, and reciprocity rules for giving ground.",
-  },
-  {
-    key: "Spec & Quality Rules",
-    description: "How to handle spec gaps, over-specced vendors, and quality premiums.",
-  },
-  {
-    key: "Escalation Triggers",
-    description: "When the bot should stop and escalate to you for a decision.",
+    key: "Price & Concession Rules",
+    description: "How to handle price anchors, guesses, counter-offers, and concession sequencing.",
   },
   {
     key: "Behavioral Scenarios",
-    description: "How the bot responds to specific vendor tactics (anchoring, urgency, bundling, etc.).",
+    description: "How the bot responds to specific vendor tactics (anchoring, urgency, bundling, sole-source claims, etc.).",
   },
   {
-    key: "Forbidden & Permitted Language",
-    description: "Exact phrases the bot must never say, and phrases it should use.",
-  },
-  {
-    key: "Agreement & Handoff",
-    description: "How the bot signals agreement and what it must never commit to.",
+    key: "Company-Specific Rules",
+    description: "Free-form rules unique to your organisation — payment terms, currencies, ESG requirements, approval thresholds.",
   },
 ];
 
