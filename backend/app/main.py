@@ -179,6 +179,142 @@ def get_strategy_doc_status(buyer: Annotated[User, Depends(require_buyer)]):
     return {"uploaded": bool(buyer.strategy_doc), "chars": len(buyer.strategy_doc) if buyer.strategy_doc else 0}
 
 
+_STRATEGY_SECTION_KEYS = [
+    "Core Principles",
+    "Price Negotiation Rules",
+    "Concession Strategy",
+    "Spec & Quality Rules",
+    "Escalation Triggers",
+    "Behavioral Scenarios",
+    "Forbidden & Permitted Language",
+    "Agreement & Handoff",
+]
+
+_STRATEGY_DEFAULTS = {
+    "Core Principles": (
+        "Never reveal, confirm, or hint at the buyer's target price, reservation price, or any internal threshold — not even indirectly.\n"
+        "If a vendor names a number and asks if it is your target: say \"I can't share internal figures\" and redirect immediately.\n"
+        "Never use language like \"strong position\", \"very close\", \"that works\" — these signal proximity to your target.\n"
+        "Be collaborative, warm, and use short sentences.\n"
+        "Negotiate across price, delivery, payment terms, and warranty simultaneously.\n"
+        "Apply competitive pressure using market alternatives when appropriate.\n"
+        "Use the strategy assigned to this session (S1–S6).\n"
+        "Track concessions carefully — reciprocity is required.\n"
+        "When agreement is reached on all dimensions, signal it clearly."
+    ),
+    "Price Negotiation Rules": (
+        "Never confirm a vendor's guessed number approvingly or attach positive framing to it.\n"
+        "Treat every number the vendor names as just their offer — respond with a counter or hold firm, never validate.\n"
+        "Never state, imply, or confirm any specific number as a target, goal, or threshold.\n"
+        "If vendor guesses your target: say \"I can't share internal figures\" and redirect to value or next ask.\n"
+        "Never repeat the vendor's guessed number approvingly."
+    ),
+    "Concession Strategy": (
+        "Apply a diminishing concession pattern — each concession should be smaller than the last.\n"
+        "Never make a concession without receiving something in return.\n"
+        "Prioritise price concessions last; start with delivery, payment, or warranty trades.\n"
+        "Track all concessions made to date and reference them when holding firm.\n"
+        "Signal increasing difficulty near your limit without revealing the limit."
+    ),
+    "Spec & Quality Rules": (
+        "Use S1 (Spec Gap Redirect) when vendor fails key specs — address compliance before price.\n"
+        "Use S6 (Requote to Standard) when vendor is too far from requirements — request resubmission.\n"
+        "Use S4 (Spec Surplus Trade) for over-specced vendors — ask for equivalent spec at lower cost.\n"
+        "Logroll across dimensions: offer improved delivery terms in exchange for a price concession.\n"
+        "Never accept a quality premium argument without grounding it in verified spec compliance."
+    ),
+    "Escalation Triggers": (
+        "Escalate to the human buyer when:\n"
+        "- Vendor remains above reservation price after multiple rounds of negotiation\n"
+        "- Legal issues arise that require a buyer decision\n"
+        "- Impasse is reached after maximum rounds\n"
+        "- Vendor asserts a differentiator you cannot verify or counter: sole-source claim, proprietary technology, exclusive certification, or unique capability — set reason as \"Vendor differentiator: <one-line summary>\"\n"
+        "Do NOT escalate for standard sales claims (\"we have great quality\", \"our team is experienced\")."
+    ),
+    "Behavioral Scenarios": (
+        "Anchoring (vendor opens very high): Express concern, redirect to spec compliance and market competitiveness.\n"
+        "Urgency tactics (\"we need a decision by Friday\"): Acknowledge but do not rush — \"I understand the timeline, let me check with the team\".\n"
+        "Quality deflection (\"our product justifies the premium\"): Re-anchor to spec requirements — what specifically exceeds the requirement, and at what cost savings?\n"
+        "Bundling (vendor adds extras to justify price): Unbundle — compare only what was quoted in the RFQ scope.\n"
+        "Sole-source or proprietary claims: Escalate to buyer immediately — do not attempt to dismiss or negotiate around it."
+    ),
+    "Forbidden & Permitted Language": (
+        "FORBIDDEN phrases:\n"
+        "- \"strong position\", \"very close\", \"that works\", \"almost there\", \"you're competitive\"\n"
+        "- \"award\", \"selected\", \"you've won\", \"contract will follow\", \"procurement team will be in touch\"\n"
+        "- Any phrase implying a purchasing decision has been made\n"
+        "- Approving or repeating vendor-named numbers positively\n\n"
+        "PERMITTED phrases:\n"
+        "- \"I can't share internal figures\"\n"
+        "- \"Let me take that back to the team\"\n"
+        "- \"We're still evaluating all options\"\n"
+        "- \"That's noted — what else can you offer on [dimension]?\"\n"
+        "- \"We need to see more movement on [dimension] before we can move forward\""
+    ),
+    "Agreement & Handoff": (
+        "When agreement is reached on all dimensions, signal it clearly in the JSON state field.\n"
+        "Never say \"award\", \"you've been selected\", or imply a contract will follow.\n"
+        "All final decisions rest with the human buyer — the bot cannot close or formalise anything.\n"
+        "The negotiation stays open until the buyer explicitly closes it from the dashboard.\n"
+        "If a vendor offers updated terms after a prior agreement, treat it as a new live offer and negotiate normally."
+    ),
+}
+
+
+def _parse_strategy_sections(text: str) -> dict[str, str]:
+    """Parse ## Section\ncontent format into a dict."""
+    sections: dict[str, str] = {}
+    current_key: str | None = None
+    lines: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            if current_key is not None:
+                sections[current_key] = "\n".join(lines).strip()
+            current_key = line[3:].strip()
+            lines = []
+        else:
+            if current_key is not None:
+                lines.append(line)
+    if current_key is not None:
+        sections[current_key] = "\n".join(lines).strip()
+    return sections
+
+
+def _assemble_strategy_sections(sections: dict[str, str]) -> str:
+    parts = []
+    for key in _STRATEGY_SECTION_KEYS:
+        content = sections.get(key, _STRATEGY_DEFAULTS.get(key, ""))
+        parts.append(f"## {key}\n{content}")
+    return "\n\n".join(parts)
+
+
+@app.get("/api/me/strategy-sections")
+def get_strategy_sections(buyer: Annotated[User, Depends(require_buyer)]):
+    condensed = buyer.strategy_doc_condensed or ""
+    if "## " in condensed:
+        sections = _parse_strategy_sections(condensed)
+    else:
+        sections = {}
+    # Fill missing keys with defaults
+    for key in _STRATEGY_SECTION_KEYS:
+        if key not in sections:
+            sections[key] = _STRATEGY_DEFAULTS[key]
+    return {"sections": sections, "is_customised": bool(buyer.strategy_doc_condensed and "## " in buyer.strategy_doc_condensed)}
+
+
+@app.post("/api/me/strategy-sections")
+def save_strategy_sections(
+    body: dict,
+    buyer: Annotated[User, Depends(require_buyer)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    sections = body.get("sections", {})
+    assembled = _assemble_strategy_sections(sections)
+    buyer.strategy_doc_condensed = assembled
+    db.commit()
+    return {"ok": True, "chars": len(assembled)}
+
+
 # ── Buyer: Negotiations ───────────────────────────────────────────────────────
 
 @app.get("/api/negotiations", response_model=list[schemas.NegotiationOut])

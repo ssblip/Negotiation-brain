@@ -81,6 +81,10 @@ export const api = {
 
   getStrategyDocStatus: () => req<{ uploaded: boolean; chars: number }>("/me/strategy-doc-status"),
 
+  getStrategySections: () => req<{ sections: Record<string, string>; is_customised: boolean }>("/me/strategy-sections"),
+  saveStrategySections: (sections: Record<string, string>) =>
+    req<{ ok: boolean; chars: number }>("/me/strategy-sections", { method: "POST", body: JSON.stringify({ sections }) }),
+
   parseQuotes: (nid: number, files: File[]) => {
     const fd = new FormData();
     files.forEach(f => fd.append("files", f));
