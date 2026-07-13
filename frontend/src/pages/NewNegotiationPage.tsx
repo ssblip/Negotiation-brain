@@ -12,7 +12,7 @@ const btnBack: React.CSSProperties = { padding: "8px 14px", background: "transpa
 
 type Step = "basics" | "targets" | "quotes" | "review";
 const STEPS: Step[] = ["basics", "targets", "quotes", "review"];
-const STEP_LABELS = ["Basics", "Set Targets", "Upload Quotes", "Review & Send"];
+const STEP_LABELS = ["Basics", "Set Targets", "Upload Quotes", "Qualify & Send"];
 
 export default function NewNegotiationPage() {
   const nav = useNavigate();
@@ -635,14 +635,16 @@ export default function NewNegotiationPage() {
         </div>
       )}
 
-      {/* Step 4: Review & Send invitations */}
+      {/* Step 4: Qualify & Send invitations */}
       {step === "review" && (() => {
-        const flagged = vendorSessions.filter(vs => vs.status === "pending_qualification");
-        const ready = vendorSessions.filter(vs => vs.status !== "pending_qualification");
-        const totalIncluded = vendorSessions.filter(vs => vs.status !== "pending_qualification").length;
+        const hasFailed = (vs: typeof vendorSessions[0]) => (vs.mandatory_failures ?? []).length > 0;
+        const flagged = vendorSessions.filter(vs => hasFailed(vs) && !vs.buyer_override);
+        const overriddenVendors = vendorSessions.filter(vs => hasFailed(vs) && vs.buyer_override);
+        const clean = vendorSessions.filter(vs => !hasFailed(vs));
+        const totalIncluded = clean.length + overriddenVendors.length;
         return (
           <div style={card}>
-            <h3 style={h3}>Review & Send Invitations</h3>
+            <h3 style={h3}>Qualify & Send Invitations</h3>
 
             {/* Qualification review — only shown when bot has flagged vendors */}
             {flagged.length > 0 && (
@@ -693,7 +695,7 @@ export default function NewNegotiationPage() {
             )}
 
             {/* Overridden vendors (buyer chose to include despite failures) */}
-            {vendorSessions.filter(vs => vs.buyer_override && vs.status !== "pending_qualification").map(vs => (
+            {overriddenVendors.map(vs => (
               <div key={vs.id} style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: 12, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 13, color: "#111827" }}>{vs.vendor_company || vs.vendor_email}</div>
@@ -715,7 +717,7 @@ export default function NewNegotiationPage() {
             ))}
 
             {/* Clean vendors */}
-            {ready.filter(vs => !vs.buyer_override).map(vs => (
+            {clean.map(vs => (
               <div key={vs.id} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 13, color: "#111827" }}>{vs.vendor_company || vs.vendor_email}</div>
