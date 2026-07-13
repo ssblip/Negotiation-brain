@@ -87,6 +87,15 @@ def get_mandatory_failures(custom_specs: list[dict], custom_spec_values: dict[st
         field_type = spec.get("field_type", "TEXT")
         required_val = spec.get("required_value")
         vendor_val = vendor_vals.get(name)
+
+        # If the spec wasn't extracted directly, search the certifications field.
+        # Handles the case where quotes were parsed before the custom spec was defined.
+        if vendor_val is None and field_type.upper() == "CAT" and required_val:
+            certs = str(vendor_vals.get("certifications") or "")
+            parts = [p.strip() for p in certs.split(",")]
+            if any(p.lower() == str(required_val).lower() for p in parts):
+                vendor_val = required_val
+
         if _score_single_spec(field_type, vendor_val, required_val) == 0.0:
             failures.append(name)
     return failures
