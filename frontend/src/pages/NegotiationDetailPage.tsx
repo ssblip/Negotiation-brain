@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import * as XLSX from "xlsx";
-import { api, BuyerTargets, Escalation, Message, VendorSession } from "../api";
+import { api, Escalation, Message, VendorSession } from "../api";
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   invited:               { bg: "#eff6ff", text: "#2563eb" },
@@ -76,8 +76,6 @@ export default function NegotiationDetailPage() {
 
   const [vendors, setVendors] = useState<VendorSession[]>([]);
   const [escalations, setEscalations] = useState<Escalation[]>([]);
-  const [targets, setTargets] = useState<BuyerTargets | null>(null);
-  const [showQualify, setShowQualify] = useState(true);
   const [priorityDim, setPriorityDim] = useState<Partial<Record<"P1" | "P2" | "P3", DimKey>>>({});
   const [selectedVs, setSelectedVs] = useState<VendorSession | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -105,7 +103,6 @@ export default function NegotiationDetailPage() {
 
   useEffect(() => {
     refresh();
-    api.getTargets(nid).then(t => setTargets(t)).catch(() => {});
     pollRef.current = setInterval(refresh, 5000);
     return () => clearInterval(pollRef.current);
   }, [refresh]);
@@ -188,12 +185,6 @@ export default function NegotiationDetailPage() {
 
   const isCompleted = vendors.some(v => v.status === "awarded");
   const pendingEscalations = escalations.filter(e => e.status === "pending");
-  const pendingQualification = vendors.filter(v => v.status === "pending_qualification");
-
-  async function handleQualificationOverride(vsid: number, override: boolean) {
-    const updated = await api.overrideVendorQualification(nid, vsid, override);
-    setVendors(vs => vs.map(v => v.id === updated.id ? updated : v));
-  }
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 16px" }}>
@@ -220,84 +211,6 @@ export default function NegotiationDetailPage() {
       {awardedTo && (
         <div style={{ background: "#fef9c3", border: "1px solid #fde047", borderRadius: 8, padding: "12px 20px", marginBottom: 20, fontWeight: 600, color: "#854d0e", fontSize: 14 }}>
           Tender awarded to <strong>{awardedTo}</strong>. Emails have been sent to all vendors.
-        </div>
-      )}
-
-      {/* Qualification review */}
-      {pendingQualification.length > 0 && (
-        <div style={{ background: "#fff1f2", border: "1px solid #fecdd3", borderRadius: 8, padding: 16, marginBottom: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: showQualify ? 16 : 0 }}>
-            <div>
-              <span style={{ fontWeight: 700, color: "#be123c", fontSize: 14 }}>
-                ⚠ {pendingQualification.length} vendor{pendingQualification.length > 1 ? "s" : ""} require qualification review
-              </span>
-              <div style={{ fontSize: 12, color: "#9f1239", marginTop: 2 }}>
-                These vendors don't meet one or more Must Have specs. Review and decide whether to include them.
-              </div>
-            </div>
-            <button onClick={() => setShowQualify(q => !q)}
-              style={{ padding: "5px 14px", background: "#fff", border: "1px solid #fecdd3", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#be123c", cursor: "pointer" }}>
-              {showQualify ? "Collapse" : "Review →"}
-            </button>
-          </div>
-
-          {showQualify && pendingQualification.map(vs => {
-            const mandatorySpecs = (targets?.custom_specs ?? []).filter(s => s.mandatory);
-            const failedSpecs = (vs.mandatory_failures ?? []);
-            const reason = failedSpecs.length > 0
-              ? `Does not meet Must Have spec${failedSpecs.length > 1 ? "s" : ""}: ${failedSpecs.map(name => {
-                  const spec = mandatorySpecs.find(s => s.name === name);
-                  const vendorVal = (vs.custom_spec_values as Record<string, unknown> | null)?.[name];
-                  const req = spec?.required_value;
-                  return `${name}${req != null ? ` (required: ${req}${spec?.unit ? " " + spec.unit : ""}, provided: ${vendorVal ?? "—"})` : ""}`;
-                }).join(", ")}`
-              : "Failed Must Have qualification";
-
-            return (
-              <div key={vs.id} style={{ background: "#fff", border: "1px solid #fecdd3", borderRadius: 8, padding: 14, marginBottom: 10 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 14, color: "#1e3a5f" }}>
-                      {vs.vendor_company || vs.vendor_email}
-                      {vs.vendor_company && <span style={{ fontWeight: 400, color: "#6b7280", fontSize: 12, marginLeft: 6 }}>{vs.vendor_email}</span>}
-                    </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-                      {mandatorySpecs.map(spec => {
-                        const failed = failedSpecs.includes(spec.name);
-                        return (
-                          <span key={spec.name} style={{
-                            fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 99,
-                            background: failed ? "#fef2f2" : "#f0fdf4",
-                            color: failed ? "#dc2626" : "#059669",
-                            border: `1px solid ${failed ? "#fca5a5" : "#86efac"}`,
-                          }}>
-                            {failed ? "✗" : "✓"} {spec.name}
-                          </span>
-                        );
-                      })}
-                    </div>
-                    <div style={{ fontSize: 12, color: "#9f1239", marginTop: 6, fontStyle: "italic" }}>
-                      Bot recommends: exclude — {reason}
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: 16 }}>
-                    <span style={{ fontSize: 12, color: "#6b7280" }}>Include anyway?</span>
-                    <button
-                      onClick={() => handleQualificationOverride(vs.id, !vs.buyer_override)}
-                      style={{
-                        padding: "4px 16px", borderRadius: 99, border: "1.5px solid", fontSize: 12, fontWeight: 700, cursor: "pointer",
-                        background: vs.buyer_override ? "#f0fdf4" : "#f9fafb",
-                        color: vs.buyer_override ? "#059669" : "#6b7280",
-                        borderColor: vs.buyer_override ? "#86efac" : "#d1d5db",
-                      }}
-                    >
-                      {vs.buyer_override ? "✓ Included" : "Exclude"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
         </div>
       )}
 
