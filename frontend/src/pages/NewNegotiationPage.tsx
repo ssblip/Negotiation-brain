@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { api, VendorQuote } from "../api";
+import { api, VendorQuote, VendorSession } from "../api";
 
 const card: React.CSSProperties = { background: "#fff", borderRadius: 10, padding: 28, boxShadow: "0 1px 4px rgba(0,0,0,0.07)", border: "1px solid #e5e7eb", marginBottom: 20 };
 const label: React.CSSProperties = { display: "block", marginBottom: 4, fontSize: 13, fontWeight: 500, color: "#374151" };
@@ -25,6 +25,7 @@ export default function NewNegotiationPage() {
   const [resumeLoading, setResumeLoading] = useState(!!resumeId);
   const [err, setErr] = useState("");
   const [activeVendorTab, setActiveVendorTab] = useState(0);
+  const [vendorSessions, setVendorSessions] = useState<VendorSession[]>([]);
 
   // Step 1 — Basics
   const [basics, setBasics] = useState({ title: "", item: "", quantity: 1, currency: "USD" });
@@ -68,7 +69,7 @@ export default function NewNegotiationPage() {
         ]);
 
         if (existingVendors.length > 0) {
-          // vendors already saved — map to VendorQuote shape for display
+          setVendorSessions(existingVendors);
           setVendors(existingVendors.map(vs => ({
             vendor_email: vs.vendor_email,
             vendor_company: vs.vendor_company,
@@ -168,9 +169,19 @@ export default function NewNegotiationPage() {
     setLoading(true); setErr("");
     try {
       await api.addVendors(negId, vendors);
+      const sessions = await api.listVendors(negId);
+      setVendorSessions(sessions);
       setStep("review");
     } catch (e: unknown) { setErr(e instanceof Error ? e.message : "Error"); }
     finally { setLoading(false); }
+  }
+
+  async function handleQualificationOverride(vsid: number, include: boolean) {
+    if (!negId) return;
+    try {
+      const updated = await api.overrideVendorQualification(negId, vsid, include);
+      setVendorSessions(ss => ss.map(s => s.id === vsid ? updated : s));
+    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "Error"); }
   }
 
   async function handleTargets() {
@@ -625,30 +636,109 @@ export default function NewNegotiationPage() {
       )}
 
       {/* Step 4: Review & Send invitations */}
-      {step === "review" && (
-        <div style={card}>
-          <h3 style={h3}>Review & Send Invitations</h3>
-          <p style={{ fontSize: 14, color: "#374151", marginBottom: 20 }}>
-            Everything is set. Clicking "Send Invitations" will email each vendor with a unique negotiation link.
-            The AI bot will greet them automatically when they open the chat.
-          </p>
-          <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: 16, marginBottom: 20, fontSize: 13 }}>
-            <strong>What happens next:</strong>
-            <ul style={{ marginTop: 8, paddingLeft: 20, lineHeight: 1.8 }}>
-              <li>Each vendor receives a personalised email with a secure link</li>
-              <li>When vendor opens the link, the AI bot starts the negotiation automatically</li>
-              <li>You can monitor all conversations live in the negotiation dashboard</li>
-              <li>You'll receive an email alert for escalations and agreements</li>
-            </ul>
+      {step === "review" && (() => {
+        const flagged = vendorSessions.filter(vs => vs.status === "pending_qualification");
+        const ready = vendorSessions.filter(vs => vs.status !== "pending_qualification");
+        const totalIncluded = vendorSessions.filter(vs => vs.status !== "pending_qualification").length;
+        return (
+          <div style={card}>
+            <h3 style={h3}>Review & Send Invitations</h3>
+
+            {/* Qualification review — only shown when bot has flagged vendors */}
+            {flagged.length > 0 && (
+              <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: 16, marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e", marginBottom: 10 }}>
+                  Bot Qualification Review — {flagged.length} vendor{flagged.length > 1 ? "s" : ""} flagged
+                </div>
+                <div style={{ fontSize: 12, color: "#78350f", marginBottom: 14 }}>
+                  These vendors don't meet your Must Have specs. Bot recommends excluding them. You have the final say.
+                </div>
+                {flagged.map(vs => (
+                  <div key={vs.id} style={{ background: "#fff", border: "1.5px solid #fca5a5", borderRadius: 8, padding: 14, marginBottom: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 14, color: "#111827" }}>
+                          {vs.vendor_company || vs.vendor_email}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>{vs.vendor_email}</div>
+                        <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 5 }}>
+                          {(vs.mandatory_failures || []).map(f => (
+                            <span key={f} style={{ fontSize: 11, background: "#fee2e2", color: "#dc2626", border: "1px solid #fca5a5", borderRadius: 99, padding: "2px 8px", fontWeight: 600 }}>
+                              {f}
+                            </span>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: 8, fontSize: 12, color: "#7c3aed", fontStyle: "italic" }}>
+                          Bot: Vendor does not meet {(vs.mandatory_failures || []).join(", ")} — recommend excluding from negotiation.
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        <button
+                          onClick={() => handleQualificationOverride(vs.id, true)}
+                          style={{ padding: "6px 14px", borderRadius: 6, border: "1.5px solid #059669", background: "#f0fdf4", color: "#059669", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                        >
+                          Include
+                        </button>
+                        <button
+                          onClick={() => handleQualificationOverride(vs.id, false)}
+                          style={{ padding: "6px 14px", borderRadius: 6, border: "1.5px solid #dc2626", background: "#fef2f2", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                        >
+                          Exclude
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Overridden vendors (buyer chose to include despite failures) */}
+            {vendorSessions.filter(vs => vs.buyer_override && vs.status !== "pending_qualification").map(vs => (
+              <div key={vs.id} style={{ background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: 12, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: "#111827" }}>{vs.vendor_company || vs.vendor_email}</div>
+                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{vs.vendor_email}</div>
+                  <div style={{ marginTop: 5, display: "flex", gap: 5, flexWrap: "wrap" }}>
+                    {(vs.mandatory_failures || []).map(f => (
+                      <span key={f} style={{ fontSize: 10, background: "#fee2e2", color: "#dc2626", borderRadius: 99, padding: "1px 7px", fontWeight: 600 }}>{f}</span>
+                    ))}
+                    <span style={{ fontSize: 10, background: "#d1fae5", color: "#059669", borderRadius: 99, padding: "1px 7px", fontWeight: 700 }}>Buyer included</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleQualificationOverride(vs.id, false)}
+                  style={{ fontSize: 11, color: "#6b7280", background: "none", border: "1px solid #d1d5db", borderRadius: 5, padding: "4px 10px", cursor: "pointer" }}
+                >
+                  Undo — Exclude
+                </button>
+              </div>
+            ))}
+
+            {/* Clean vendors */}
+            {ready.filter(vs => !vs.buyer_override).map(vs => (
+              <div key={vs.id} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: "#111827" }}>{vs.vendor_company || vs.vendor_email}</div>
+                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{vs.vendor_email}</div>
+                </div>
+                <span style={{ fontSize: 11, background: "#d1fae5", color: "#059669", borderRadius: 99, padding: "3px 10px", fontWeight: 700 }}>Ready</span>
+              </div>
+            ))}
+
+            <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, padding: 14, margin: "20px 0 20px", fontSize: 13 }}>
+              <strong>{totalIncluded} vendor{totalIncluded !== 1 ? "s" : ""} will be invited.</strong>
+              {" "}When they open their link the AI bot starts negotiating automatically. You can monitor all conversations live and will be alerted for escalations.
+            </div>
+
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <button style={btnBack} onClick={goBack}>← Back</button>
+              <button style={{ ...btn, padding: "12px 28px", fontSize: 15 }} onClick={handleSend} disabled={loading || totalIncluded === 0}>
+                {loading ? "Sending…" : `Send Invitations to ${totalIncluded} Vendor${totalIncluded !== 1 ? "s" : ""}`}
+              </button>
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <button style={btnBack} onClick={goBack}>← Back</button>
-            <button style={{ ...btn, padding: "12px 28px", fontSize: 15 }} onClick={handleSend} disabled={loading}>
-              {loading ? "Sending…" : "🚀 Send Invitations"}
-            </button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
