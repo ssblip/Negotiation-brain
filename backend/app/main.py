@@ -56,22 +56,24 @@ from app.scorer import (
 
 Base.metadata.create_all(bind=engine)
 
-# Runtime migrations
+# Runtime migrations — each statement gets its own connection so a PostgreSQL
+# aborted-transaction state from one statement doesn't block the rest.
 from sqlalchemy import text as _sql_text
-with engine.connect() as _conn:
-    for _stmt in [
-        "ALTER TABLE users ADD COLUMN strategy_doc TEXT",
-        "ALTER TABLE users ADD COLUMN strategy_doc_condensed TEXT",
-        "ALTER TABLE vendor_sessions ADD COLUMN priority TEXT",
-        "ALTER TABLE negotiations ADD COLUMN strategy_doc_condensed TEXT",
-        "ALTER TABLE vendor_sessions ADD COLUMN mandatory_failures JSON",
-        "ALTER TABLE vendor_sessions ADD COLUMN buyer_override INTEGER DEFAULT 0",
-    ]:
-        try:
+_MIGRATIONS = [
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS strategy_doc TEXT",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS strategy_doc_condensed TEXT",
+    "ALTER TABLE vendor_sessions ADD COLUMN IF NOT EXISTS priority TEXT",
+    "ALTER TABLE negotiations ADD COLUMN IF NOT EXISTS strategy_doc_condensed TEXT",
+    "ALTER TABLE vendor_sessions ADD COLUMN IF NOT EXISTS mandatory_failures JSON",
+    "ALTER TABLE vendor_sessions ADD COLUMN IF NOT EXISTS buyer_override BOOLEAN DEFAULT FALSE",
+]
+for _stmt in _MIGRATIONS:
+    try:
+        with engine.connect() as _conn:
             _conn.execute(_sql_text(_stmt))
             _conn.commit()
-        except Exception:
-            pass  # column already exists
+    except Exception:
+        pass
 
 import traceback as _tb
 from fastapi.responses import JSONResponse
