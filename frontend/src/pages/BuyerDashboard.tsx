@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, Negotiation } from "../api";
 
@@ -18,31 +18,10 @@ export default function BuyerDashboard() {
   const nav = useNavigate();
   const [negotiations, setNegotiations] = useState<Negotiation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [docStatus, setDocStatus] = useState<{ uploaded: boolean; chars: number } | null>(null);
-  const [docUploading, setDocUploading] = useState(false);
-  const [docErr, setDocErr] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     api.listNegotiations().then(setNegotiations).finally(() => setLoading(false));
-    api.getStrategyDocStatus().then(setDocStatus).catch(() => {});
   }, []);
-
-  async function handleDocUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setDocUploading(true); setDocErr("");
-    try {
-      await api.uploadGlobalStrategyDoc(file);
-      const status = await api.getStrategyDocStatus();
-      setDocStatus(status);
-    } catch (err: unknown) {
-      setDocErr(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setDocUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  }
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 16px" }}>
@@ -56,30 +35,6 @@ export default function BuyerDashboard() {
           style={{ background: "#1e3a5f", color: "#fff", border: "none", padding: "10px 20px", borderRadius: 8, fontWeight: 600, cursor: "pointer", fontSize: 14 }}>
           + New Negotiation
         </button>
-      </div>
-
-      {/* Strategy Doc Card */}
-      <div style={{ background: docStatus?.uploaded ? "#f0fdf4" : "#fffbeb", border: `1px solid ${docStatus?.uploaded ? "#86efac" : "#fde68a"}`, borderRadius: 10, padding: "16px 20px", marginBottom: 24, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        <div>
-          <div style={{ fontWeight: 600, fontSize: 14, color: "#1e3a5f", marginBottom: 2 }}>
-            {docStatus?.uploaded ? "✓ Negotiation Strategy Document" : "⚠ No Strategy Document Uploaded"}
-          </div>
-          <div style={{ fontSize: 13, color: "#6b7280" }}>
-            {docStatus?.uploaded
-              ? `Active — ${(docStatus.chars / 1000).toFixed(1)}k characters · Powers the AI across all negotiations`
-              : "Upload your NegotiationBrain document once. It drives the AI for every negotiation."}
-          </div>
-          {docErr && <div style={{ fontSize: 12, color: "#dc2626", marginTop: 4 }}>{docErr}</div>}
-        </div>
-        <div>
-          <input ref={fileInputRef} type="file" accept=".pdf,.docx,.xlsx,.txt" style={{ display: "none" }} onChange={handleDocUpload} />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={docUploading}
-            style={{ padding: "7px 16px", background: "#1e3a5f", color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 13 }}>
-            {docUploading ? "Uploading…" : docStatus?.uploaded ? "Replace Document" : "Upload Document"}
-          </button>
-        </div>
       </div>
 
       {loading ? (
