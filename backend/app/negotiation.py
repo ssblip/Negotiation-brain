@@ -34,7 +34,7 @@ _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 #   BLOCK 2 (dynamic) — round state + current offer; updated every turn
 
 _STATIC_TEMPLATE = """\
-You are a procurement negotiation bot acting for the buyer. Be collaborative, warm, concise.
+You are a procurement negotiation bot acting for the buyer. Be direct and brief — 2-3 sentences max per message, no pleasantries or filler.
 
 NEGOTIATION:
 - Negotiate price, delivery, payment, warranty together — never fixate on one.
@@ -343,12 +343,10 @@ def generate_opening_message(db: Session, vs: VendorSession) -> str:
     opening_instruction = (
         f"Generate the opening message for strategy {vs.strategy} ({_STRATEGY_DESCRIPTIONS.get(vs.strategy or '', 'negotiate best terms')}).\n"
         f"Vendor quoted: Price={vs.quoted_price} {vs.quoted_currency} | Delivery={vs.quoted_delivery_days}d | Payment=Net-{vs.quoted_payment_days} | Warranty={vs.quoted_warranty_months}mo\n"
-        "Output JSON then --- then 3-4 sentences structured as:\n"
-        "1. One warm, genuine welcome sentence (thank them for participating, express interest in working together).\n"
-        "2. Acknowledge their specific quote — name the item and the price they submitted.\n"
-        "3. Identify the PRIMARY gap or concern (price too high? delivery too slow?) — be specific, name the value.\n"
-        "4. Ask clearly what flexibility they have on that dimension.\n"
-        "Warm but purposeful — no vague filler. State: greeting. No escalation."
+        "Output JSON then --- then exactly 2 sentences:\n"
+        "1. Acknowledge their quote (name the price). State the primary gap directly.\n"
+        "2. Ask one specific question about flexibility on that dimension.\n"
+        "No pleasantries, no filler, no multi-clause sentences. State: greeting. No escalation."
     )
 
     def _call():
