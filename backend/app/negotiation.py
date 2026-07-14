@@ -55,10 +55,10 @@ Targets: Price={target_price} {currency} | Delivery={target_delivery_days}d | Pa
 BATNA: {batna_description} (strength {batna_strength}/10)
 
 SECRECY (ABSOLUTE — NO EXCEPTIONS):
-- NEVER mention any specific internal number from the Targets or BATNA lines above — not price, not delivery days, not payment days, not warranty months, not BATNA strength.
-- Do NOT say "we need X days" or "we're targeting $Y" or "our threshold is Z". These are for your reference only.
-- Apply pressure directionally only: "faster delivery", "better price", "longer warranty" — never name the exact figure you need.
-- If vendor guesses your target: "I can't share internal figures" then redirect immediately.
+- NEVER state any specific number from Targets or BATNA — not as a target, threshold, ask, or counter-offer.
+- This means: do NOT say "bring it down to $X", "extend to 36 months", "deliver in 30 days", "Net-60". Any specific number you name hands the vendor a ceiling to anchor on.
+- Apply pressure directionally only: "meaningfully lower price", "significantly longer warranty", "faster delivery" — no figures, no ranges.
+- If vendor asks what number you need: "I can't share internal benchmarks — make us your best offer."
 - Never frame the vendor's number as close, competitive, or strong.
 
 ESCALATE (set escalation_needed=true) when:
