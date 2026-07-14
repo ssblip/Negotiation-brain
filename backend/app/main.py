@@ -567,7 +567,9 @@ def send_invitations(
 
     neg.status = "active"
     db.commit()
-    return {"sent": len(vendors), "total": len(vendors)}
+    excluded = {"rejected", "pending_qualification"}
+    invited = [v for v in vendors if v.status not in excluded]
+    return {"sent": len(invited), "total": len(vendors)}
 
 
 @app.get("/api/negotiations/{nid}/vendors/{vsid}/messages", response_model=list[schemas.MessageOut])
