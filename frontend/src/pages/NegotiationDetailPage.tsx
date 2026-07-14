@@ -136,9 +136,10 @@ export default function NegotiationDetailPage() {
   }
 
   const hasSort = Object.values(priorityDim).some(Boolean);
+  const activeVendors = vendors.filter(v => v.status !== "rejected");
   const sortedVendors = hasSort
-    ? [...vendors].sort((a, b) => sortScore(b) - sortScore(a))
-    : vendors;
+    ? [...activeVendors].sort((a, b) => sortScore(b) - sortScore(a))
+    : activeVendors;
 
   function exportExcel() {
     const rows = vendors.map(v => ({
