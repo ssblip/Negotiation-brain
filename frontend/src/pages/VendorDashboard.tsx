@@ -26,7 +26,9 @@ export default function VendorDashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.listVendorNegotiations().then(setSessions).finally(() => setLoading(false));
+    api.listVendorNegotiations()
+      .then(s => setSessions(s.filter(v => v.status !== "pending_qualification" && v.status !== "rejected")))
+      .finally(() => setLoading(false));
   }, []);
 
   return (
