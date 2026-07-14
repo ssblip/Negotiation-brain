@@ -26,6 +26,7 @@ export default function NewNegotiationPage() {
   const [err, setErr] = useState("");
   const [activeVendorTab, setActiveVendorTab] = useState(0);
   const [vendorSessions, setVendorSessions] = useState<VendorSession[]>([]);
+  const [overridingVsid, setOverridingVsid] = useState<number | null>(null);
 
   // Step 1 — Basics
   const [basics, setBasics] = useState({ title: "", item: "", quantity: 1, currency: "USD" });
@@ -177,11 +178,29 @@ export default function NewNegotiationPage() {
   }
 
   async function handleQualificationOverride(vsid: number, include: boolean) {
-    if (!negId) return;
+    if (!negId || overridingVsid !== null) return;
+    const snapshot = vendorSessions.find(s => s.id === vsid);
+
+    // Optimistic update — instant UI response
+    setVendorSessions(ss => ss.map(s => {
+      if (s.id !== vsid) return s;
+      return {
+        ...s,
+        buyer_override: include,
+        status: include ? "invited" : (s.mandatory_failures?.length ? "rejected" : s.status),
+      };
+    }));
+    setOverridingVsid(vsid);
+
     try {
       const updated = await api.overrideVendorQualification(negId, vsid, include);
       setVendorSessions(ss => ss.map(s => s.id === vsid ? updated : s));
-    } catch (e: unknown) { setErr(e instanceof Error ? e.message : "Error"); }
+    } catch (e: unknown) {
+      if (snapshot) setVendorSessions(ss => ss.map(s => s.id === vsid ? snapshot : s));
+      setErr(e instanceof Error ? e.message : "Error");
+    } finally {
+      setOverridingVsid(null);
+    }
   }
 
   async function handleTargets() {
@@ -638,8 +657,9 @@ export default function NewNegotiationPage() {
       {/* Step 4: Qualify & Send invitations */}
       {step === "review" && (() => {
         const hasFailed = (vs: typeof vendorSessions[0]) => (vs.mandatory_failures ?? []).length > 0;
-        const flagged = vendorSessions.filter(vs => hasFailed(vs) && !vs.buyer_override);
+        const flagged = vendorSessions.filter(vs => hasFailed(vs) && !vs.buyer_override && vs.status === "pending_qualification");
         const overriddenVendors = vendorSessions.filter(vs => hasFailed(vs) && vs.buyer_override);
+        const excludedVendors = vendorSessions.filter(vs => hasFailed(vs) && !vs.buyer_override && vs.status === "rejected");
         const clean = vendorSessions.filter(vs => !hasFailed(vs));
         const totalIncluded = clean.length + overriddenVendors.length;
         return (
@@ -677,15 +697,17 @@ export default function NewNegotiationPage() {
                       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                         <button
                           onClick={() => handleQualificationOverride(vs.id, true)}
-                          style={{ padding: "6px 14px", borderRadius: 6, border: "1.5px solid #059669", background: "#f0fdf4", color: "#059669", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                          disabled={overridingVsid !== null}
+                          style={{ padding: "6px 14px", borderRadius: 6, border: "1.5px solid #059669", background: "#f0fdf4", color: "#059669", fontSize: 12, fontWeight: 700, cursor: overridingVsid !== null ? "default" : "pointer", opacity: overridingVsid === vs.id ? 0.6 : 1 }}
                         >
-                          Include
+                          {overridingVsid === vs.id ? "…" : "Include"}
                         </button>
                         <button
                           onClick={() => handleQualificationOverride(vs.id, false)}
-                          style={{ padding: "6px 14px", borderRadius: 6, border: "1.5px solid #dc2626", background: "#fef2f2", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                          disabled={overridingVsid !== null}
+                          style={{ padding: "6px 14px", borderRadius: 6, border: "1.5px solid #dc2626", background: "#fef2f2", color: "#dc2626", fontSize: 12, fontWeight: 700, cursor: overridingVsid !== null ? "default" : "pointer", opacity: overridingVsid === vs.id ? 0.6 : 1 }}
                         >
-                          Exclude
+                          {overridingVsid === vs.id ? "…" : "Exclude"}
                         </button>
                       </div>
                     </div>
@@ -709,9 +731,33 @@ export default function NewNegotiationPage() {
                 </div>
                 <button
                   onClick={() => handleQualificationOverride(vs.id, false)}
-                  style={{ fontSize: 11, color: "#6b7280", background: "none", border: "1px solid #d1d5db", borderRadius: 5, padding: "4px 10px", cursor: "pointer" }}
+                  disabled={overridingVsid !== null}
+                  style={{ fontSize: 11, color: "#6b7280", background: "none", border: "1px solid #d1d5db", borderRadius: 5, padding: "4px 10px", cursor: overridingVsid !== null ? "default" : "pointer", opacity: overridingVsid === vs.id ? 0.6 : 1 }}
                 >
-                  Undo — Exclude
+                  {overridingVsid === vs.id ? "…" : "Undo — Exclude"}
+                </button>
+              </div>
+            ))}
+
+            {/* Excluded vendors (buyer confirmed exclusion) */}
+            {excludedVendors.map(vs => (
+              <div key={vs.id} style={{ background: "#fafafa", border: "1px solid #e5e7eb", borderRadius: 8, padding: 12, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, opacity: 0.7 }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: "#374151" }}>{vs.vendor_company || vs.vendor_email}</div>
+                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{vs.vendor_email}</div>
+                  <div style={{ marginTop: 5, display: "flex", gap: 5, flexWrap: "wrap" }}>
+                    {(vs.mandatory_failures || []).map(f => (
+                      <span key={f} style={{ fontSize: 10, background: "#fee2e2", color: "#dc2626", borderRadius: 99, padding: "1px 7px", fontWeight: 600 }}>{f}</span>
+                    ))}
+                    <span style={{ fontSize: 10, background: "#f3f4f6", color: "#6b7280", borderRadius: 99, padding: "1px 7px", fontWeight: 700 }}>Excluded</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleQualificationOverride(vs.id, true)}
+                  disabled={overridingVsid !== null}
+                  style={{ fontSize: 11, color: "#059669", background: "none", border: "1px solid #86efac", borderRadius: 5, padding: "4px 10px", cursor: overridingVsid !== null ? "default" : "pointer", opacity: overridingVsid === vs.id ? 0.6 : 1 }}
+                >
+                  {overridingVsid === vs.id ? "…" : "Undo — Include"}
                 </button>
               </div>
             ))}

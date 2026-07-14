@@ -547,7 +547,7 @@ def override_vendor_qualification(
     if override and vs.status == "pending_qualification":
         vs.status = "invited"
     elif not override and vs.mandatory_failures:
-        vs.status = "pending_qualification"
+        vs.status = "rejected"
     db.commit()
     db.refresh(vs)
     return _vs_out(vs, db)
