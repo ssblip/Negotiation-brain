@@ -23,7 +23,6 @@ from app.models import (
     VendorMemory,
     VendorSession,
 )
-from app.parser import condense_strategy_doc
 
 _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
@@ -236,8 +235,6 @@ def run_negotiation_turn(
     """
     from app.models import BuyerTargets, VendorMemory
 
-    _ensure_condensed(db, vs)
-
     targets = db.query(BuyerTargets).filter(BuyerTargets.negotiation_id == vs.negotiation_id).first()
     memory = db.query(VendorMemory).filter(VendorMemory.vendor_email == vs.vendor_email).first()
 
@@ -337,8 +334,6 @@ def run_negotiation_turn(
 def generate_opening_message(db: Session, vs: VendorSession) -> str:
     """Generate the bot's first greeting message when vendor opens the chat."""
     from app.models import BuyerTargets, VendorMemory
-
-    _ensure_condensed(db, vs)
 
     targets = db.query(BuyerTargets).filter(BuyerTargets.negotiation_id == vs.negotiation_id).first()
     memory = db.query(VendorMemory).filter(VendorMemory.vendor_email == vs.vendor_email).first()
