@@ -503,8 +503,10 @@ def list_vendors(
                 vs.mandatory_failures = failures
                 if failures and not vs.buyer_override and vs.status not in ("rejected", "closed", "awarded"):
                     vs.status = "pending_qualification"
-                elif (not failures or vs.buyer_override) and vs.status == "pending_qualification":
-                    vs.status = "invited"
+                changed = True
+            # Unconditionally promote pending_qualification vendors that have no failures or buyer_override
+            if vs.status == "pending_qualification" and (not failures or vs.buyer_override):
+                vs.status = "invited"
                 changed = True
         if changed:
             db.commit()

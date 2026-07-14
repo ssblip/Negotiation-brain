@@ -8,6 +8,7 @@ Strategy    : auto-selects S1–S6 per the document's decision tree
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 
@@ -26,6 +27,11 @@ def _score_bool(vendor_val: Any, required_val: Any) -> float:
     return 100.0 if str(vendor_val).lower() == str(required_val).lower() else 0.0
 
 
+def _norm(s: str) -> str:
+    """Normalize for comparison: lowercase, strip spaces and hyphens."""
+    return s.lower().replace(" ", "").replace("-", "")
+
+
 def _score_cat(vendor_val: Any, required_val: Any) -> float:
     if vendor_val is None:
         return 0.0
@@ -33,11 +39,11 @@ def _score_cat(vendor_val: Any, required_val: Any) -> float:
     r = str(required_val).strip()
     if not r:
         return 100.0
-    if v.lower() == r.lower():
+    if _norm(v) == _norm(r):
         return 100.0
     # Handle comma-separated lists (e.g. "MIL-STD-810H, IP65" vs required "IP65")
     parts = [p.strip() for p in v.split(",")]
-    return 100.0 if any(p.lower() == r.lower() for p in parts) else 0.0
+    return 100.0 if any(_norm(p) == _norm(r) for p in parts) else 0.0
 
 
 def _score_multi(vendor_val: Any, required_val: Any) -> float:
@@ -88,13 +94,24 @@ def get_mandatory_failures(custom_specs: list[dict], custom_spec_values: dict[st
         required_val = spec.get("required_value")
         vendor_val = vendor_vals.get(name)
 
-        # If the spec wasn't extracted directly, search the certifications field.
-        # Handles the case where quotes were parsed before the custom spec was defined.
-        if vendor_val is None and field_type.upper() == "CAT" and required_val:
+        # If the spec wasn't extracted directly, fall back to the certifications field.
+        # Handles quotes parsed before the custom spec was defined.
+        if vendor_val is None and required_val:
             certs = str(vendor_vals.get("certifications") or "")
-            parts = [p.strip() for p in certs.split(",")]
-            if any(p.lower() == str(required_val).lower() for p in parts):
-                vendor_val = required_val
+            cert_parts = [p.strip() for p in certs.split(",")]
+            ft_up = field_type.upper()
+            if ft_up == "CAT":
+                if any(_norm(p) == _norm(str(required_val)) for p in cert_parts):
+                    vendor_val = required_val
+            elif ft_up == "BOOL" and str(required_val).lower() in ("true", "yes", "1"):
+                # Extract meaningful tokens from the spec name (strip generic words)
+                _STOP = {"certification", "certified", "rating", "standard",
+                         "compliant", "compliance", "requirement", "required"}
+                tokens = [t for t in re.findall(r"[A-Za-z0-9]{2,}", name)
+                          if t.lower() not in _STOP]
+                cert_norm = _norm(certs)
+                if any(_norm(t) in cert_norm for t in tokens):
+                    vendor_val = "true"
 
         if _score_single_spec(field_type, vendor_val, required_val) == 0.0:
             failures.append(name)
