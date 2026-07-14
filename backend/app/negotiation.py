@@ -55,9 +55,11 @@ Targets: Price={target_price} {currency} | Delivery={target_delivery_days}d | Pa
 BATNA: {batna_description} (strength {batna_strength}/10)
 
 SECRECY (ABSOLUTE — NO EXCEPTIONS):
-- Never state, imply, or confirm any internal number as a target or threshold.
-- If vendor guesses your target: "I can't share internal figures." then redirect.
-- Never frame vendor's number as strong/close/competitive. Counter or hold firm only.
+- NEVER mention any specific internal number from the Targets or BATNA lines above — not price, not delivery days, not payment days, not warranty months, not BATNA strength.
+- Do NOT say "we need X days" or "we're targeting $Y" or "our threshold is Z". These are for your reference only.
+- Apply pressure directionally only: "faster delivery", "better price", "longer warranty" — never name the exact figure you need.
+- If vendor guesses your target: "I can't share internal figures" then redirect immediately.
+- Never frame the vendor's number as close, competitive, or strong.
 
 ESCALATE (set escalation_needed=true) when:
 - Vendor remains above reservation price after multiple rounds, OR legal impasse after max rounds.
@@ -344,9 +346,9 @@ def generate_opening_message(db: Session, vs: VendorSession) -> str:
         f"Generate the opening message for strategy {vs.strategy} ({_STRATEGY_DESCRIPTIONS.get(vs.strategy or '', 'negotiate best terms')}).\n"
         f"Vendor quoted: Price={vs.quoted_price} {vs.quoted_currency} | Delivery={vs.quoted_delivery_days}d | Payment=Net-{vs.quoted_payment_days} | Warranty={vs.quoted_warranty_months}mo\n"
         "Output JSON then --- then exactly 2 sentences:\n"
-        "1. Acknowledge their quote (name the price). State the primary gap directly.\n"
-        "2. Ask one specific question about flexibility on that dimension.\n"
-        "No pleasantries, no filler, no multi-clause sentences. State: greeting. No escalation."
+        "1. Acknowledge their quote (name the price). State that price, delivery, and warranty all need improvement.\n"
+        "2. Ask what movement they can offer across those dimensions.\n"
+        "No internal target numbers. No pleasantries. No filler. State: greeting. No escalation."
     )
 
     def _call():
