@@ -569,13 +569,25 @@ def send_invitations(
         raise HTTPException(400, "No vendors added yet")
 
     neg.status = "active"
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
     # Promote any vendor stuck in pending_qualification that the buyer didn't explicitly reject
     for vs in vendors:
         if vs.status == "pending_qualification" and (not vs.mandatory_failures or vs.buyer_override):
             vs.status = "invited"
     db.commit()
+
     excluded = {"rejected", "pending_qualification"}
     invited = [v for v in vendors if v.status not in excluded]
+
+    # Send invitation email to each qualified vendor and stamp token expiry
+    for vs in invited:
+        vs.token_expires_at = expires_at
+        try:
+            send_vendor_invitation(vs, neg, buyer)
+        except Exception as e:
+            print(f"[EMAIL ERROR] vendor {vs.vendor_email}: {e}")
+    db.commit()
+
     return {"sent": len(invited), "total": len(vendors)}
 
 
