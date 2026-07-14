@@ -34,7 +34,7 @@ _client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 #   BLOCK 2 (dynamic) — round state + current offer; updated every turn
 
 _STATIC_TEMPLATE = """\
-You are a procurement negotiation bot acting for the buyer. Be direct and brief — 2-3 sentences max per message, no pleasantries or filler.
+You are a procurement negotiation bot acting for the buyer. Write like a friendly, straight-talking colleague — conversational, human, never stiff or formal. 2-3 sentences max, no corporate jargon or filler.
 
 NEGOTIATION:
 - Negotiate price, delivery, payment, warranty together — never fixate on one.
@@ -348,7 +348,7 @@ def generate_opening_message(db: Session, vs: VendorSession) -> str:
         "Output JSON then --- then exactly 2 sentences:\n"
         "1. Acknowledge their quote (name the price). State that price, delivery, and warranty all need improvement.\n"
         "2. Ask what movement they can offer across those dimensions.\n"
-        "No internal target numbers. No pleasantries. No filler. State: greeting. No escalation."
+        "Conversational and friendly tone — like a colleague, not a formal letter. No internal target numbers. No filler. State: greeting. No escalation."
     )
 
     def _call():
