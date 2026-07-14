@@ -118,32 +118,53 @@ def get_mandatory_failures(custom_specs: list[dict], custom_spec_values: dict[st
     return failures
 
 
-def compute_spec_score(custom_specs: list[dict], custom_spec_values: dict[str, Any] | None) -> float:
+def compute_spec_score(
+    custom_specs: list[dict],
+    custom_spec_values: dict[str, Any] | None,
+    mandatory_failures: list[str] | None = None,
+) -> float:
     """
-    Weighted average of Good to Have specs only (0–100).
-    Must Have specs are gated separately via get_mandatory_failures().
+    Spec score (0–100):
+    - Any Must Have failure → 0 (hard gate; caller may pass pre-computed list to avoid double work)
+    - All Must Have specs pass + no Good to Have specs → 100
+    - Otherwise: weighted average of Good to Have specs
+      - No required_value defined → 100 (no requirement = auto-pass)
+      - Vendor value missing → 50 (neutral; absence is not a disqualifier for nice-to-haves)
+      - Vendor value present → scored normally via _score_single_spec
     """
     if not custom_specs:
         return 100.0
 
+    # Hard gate: any mandatory failure → 0
+    if mandatory_failures is None:
+        mandatory_failures = get_mandatory_failures(custom_specs, custom_spec_values)
+    if mandatory_failures:
+        return 0.0
+
     goodtohave = [s for s in custom_specs if not s.get("mandatory", False)]
     if not goodtohave:
-        return 100.0
+        return 100.0  # only mandatory specs and all passed
 
     total_weight = sum(s.get("weight", 1.0) for s in goodtohave)
     if total_weight == 0:
         return 100.0
 
-    weighted_sum = 0.0
     vendor_vals = custom_spec_values or {}
+    weighted_sum = 0.0
 
     for spec in goodtohave:
-        name = spec["name"]
         field_type = spec.get("field_type", "TEXT")
         required_val = spec.get("required_value")
         weight = spec.get("weight", 1.0)
-        vendor_val = vendor_vals.get(name)
-        score = _score_single_spec(field_type, vendor_val, required_val)
+        vendor_val = vendor_vals.get(spec["name"])
+
+        if not required_val:
+            score = 100.0  # no requirement defined → auto-pass
+        elif vendor_val is None:
+            score = 50.0   # vendor didn't mention this spec → neutral
+        else:
+            score = _score_single_spec(field_type, vendor_val, required_val)
+
         weighted_sum += score * weight
 
     return round(weighted_sum / total_weight, 2)

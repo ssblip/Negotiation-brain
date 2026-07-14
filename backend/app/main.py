@@ -445,7 +445,7 @@ def add_vendors(
         # Compute scores
         custom_specs = targets.custom_specs if targets else []
         failures = get_mandatory_failures(custom_specs or [], v.custom_spec_values)
-        spec_score = compute_spec_score(custom_specs or [], v.custom_spec_values)
+        spec_score = compute_spec_score(custom_specs or [], v.custom_spec_values, mandatory_failures=failures)
         cvs = compute_cvs(
             spec_score,
             v.quoted_price, targets.target_price if targets else None, targets.reservation_price if targets else None,
@@ -501,6 +501,7 @@ def list_vendors(
             failures = get_mandatory_failures(custom_specs, vs.custom_spec_values) or None
             if vs.mandatory_failures != failures:
                 vs.mandatory_failures = failures
+                vs.spec_score = compute_spec_score(custom_specs, vs.custom_spec_values, mandatory_failures=failures or [])
                 if failures and not vs.buyer_override and vs.status not in ("rejected", "closed", "awarded"):
                     vs.status = "pending_qualification"
                 changed = True
