@@ -649,7 +649,7 @@ export default function NewNegotiationPage() {
 
           <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
             <button style={btnBack} onClick={goBack}>← Back</button>
-            <button style={btn} onClick={handleTargets} disabled={loading}>{loading ? "Saving…" : "Save & Prepare RFQ →"}</button>
+            <button style={btn} onClick={handleTargets} disabled={loading}>{loading ? "Saving…" : "Save & Next →"}</button>
           </div>
         </div>
       )}

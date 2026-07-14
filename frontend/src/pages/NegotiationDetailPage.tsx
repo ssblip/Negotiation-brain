@@ -417,20 +417,7 @@ export default function NegotiationDetailPage() {
                         <div style={{ fontWeight: 600, color: "#1e293b", fontSize: 14 }}>{v.vendor_company || v.vendor_email}</div>
                         <div style={{ fontSize: 12, color: "#6b7280" }}>{v.vendor_email}</div>
                       </div>
-                      <div style={{ textAlign: "right" }}>
-                        <div style={{ fontSize: 13, fontWeight: 700, color: "#1e293b" }}>
-                          {price != null ? `${v.quoted_currency} ${Number(price).toLocaleString()}` : "—"}
-                        </div>
-                        <div style={{ marginTop: 2 }}><Badge status={v.status} /></div>
-                      </div>
-                      {v.price_score != null && (
-                        <div style={{ textAlign: "center", minWidth: 44 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: v.price_score >= 80 ? "#059669" : v.price_score >= 50 ? "#d97706" : "#dc2626" }}>
-                            {v.price_score.toFixed(0)}%
-                          </div>
-                          <div style={{ fontSize: 10, color: "#9ca3af" }}>score</div>
-                        </div>
-                      )}
+                      <div><Badge status={v.status} /></div>
                     </label>
                   );
                 })}

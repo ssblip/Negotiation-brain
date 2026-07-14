@@ -365,13 +365,48 @@ def generate_opening_message(db: Session, vs: VendorSession) -> str:
 
     system_blocks = _build_system_blocks(vs, targets, memory)
 
+    # Strategy-specific opening focus: one dimension to lead with, not a scatter-shot list
+    _OPENING_FOCUS = {
+        "S1": (
+            "spec_review",
+            "1. Acknowledge receipt of their quote (name the price). Warmly note that before we can move to commercial terms, we need to discuss spec compliance.\n"
+            "2. Ask one specific question about how their product meets the technical requirements."
+        ),
+        "S2": (
+            "price_negotiation",
+            "1. Acknowledge their quote (name the price). Say it's a good starting point but the price needs to come down meaningfully to make this work.\n"
+            "2. Ask what they can do on price — just price, one focused ask."
+        ),
+        "S3": (
+            "price_negotiation",
+            "1. Acknowledge their quote (name the price). Say their product looks strong but the price needs justification at this level.\n"
+            "2. Ask them to walk you through what's driving the price — one question."
+        ),
+        "S4": (
+            "price_negotiation",
+            "1. Acknowledge their quote (name the price). Note that their spec appears above the RFQ requirement and ask if there's a more standard configuration.\n"
+            "2. Ask what that would mean for price — one focused ask."
+        ),
+        "S5": (
+            "price_negotiation",
+            "1. Acknowledge their quote (name the price). Say it's close but you need a small move on price to finalize.\n"
+            "2. Ask what their best price is — one direct ask."
+        ),
+        "S6": (
+            "spec_review",
+            "1. Acknowledge their quote (name the price). Warmly explain that the product doesn't fully meet the spec requirements as submitted.\n"
+            "2. Ask if they can resubmit with a configuration that meets the requirements — one clear ask."
+        ),
+    }
+    strategy = vs.strategy or "S2"
+    focus_state, focus_instruction = _OPENING_FOCUS.get(strategy, _OPENING_FOCUS["S2"])
+
     opening_instruction = (
-        f"Generate the opening message for strategy {vs.strategy} ({_STRATEGY_DESCRIPTIONS.get(vs.strategy or '', 'negotiate best terms')}).\n"
+        f"Generate the opening message. Strategy: {strategy} — {_STRATEGY_DESCRIPTIONS.get(strategy, '')}.\n"
         f"Vendor quoted: Price={vs.quoted_price} {vs.quoted_currency} | Delivery={vs.quoted_delivery_days}d | Payment=Net-{vs.quoted_payment_days} | Warranty={vs.quoted_warranty_months}mo\n"
-        "Output JSON then --- then exactly 2 sentences:\n"
-        "1. Acknowledge their quote (name the price). State that price, delivery, and warranty all need improvement.\n"
-        "2. Ask what movement they can offer across those dimensions.\n"
-        "Conversational and friendly tone — like a colleague, not a formal letter. No internal target numbers. No filler. State: greeting. No escalation."
+        f"Output JSON (state={focus_state}) then --- then exactly 2 sentences:\n"
+        f"{focus_instruction}\n"
+        "Conversational and friendly tone. No internal target numbers. No filler. No escalation. Do NOT ask about multiple dimensions — one focused ask only."
     )
 
     def _call():
