@@ -401,7 +401,7 @@ export default function NegotiationDetailPage() {
             <div style={{ padding: "20px 24px" }}>
               <p style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 10 }}>Select winning vendor:</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-                {vendors.map(v => {
+                {vendors.filter(v => v.status !== "rejected" && v.status !== "pending_qualification").map(v => {
                   const offer = v.current_offer || {};
                   const price = offer["price"] ?? v.quoted_price;
                   const isSelected = awardVsId === v.id;
