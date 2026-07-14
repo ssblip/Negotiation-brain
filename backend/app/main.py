@@ -463,6 +463,9 @@ def add_vendors(
         vs.concession_budget = budget
         if failures and not vs.buyer_override:
             vs.status = "pending_qualification"
+        elif vs.status in ("pending_qualification", "invited"):
+            # Passes all must-haves (or buyer overrode) — always invited
+            vs.status = "invited"
         vs.current_offer = {
             "price": v.quoted_price,
             "delivery_days": v.quoted_delivery_days,
@@ -500,7 +503,7 @@ def list_vendors(
                 vs.mandatory_failures = failures
                 if failures and not vs.buyer_override and vs.status not in ("rejected", "closed", "awarded"):
                     vs.status = "pending_qualification"
-                elif not failures and vs.status == "pending_qualification":
+                elif (not failures or vs.buyer_override) and vs.status == "pending_qualification":
                     vs.status = "invited"
                 changed = True
         if changed:
