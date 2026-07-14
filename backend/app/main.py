@@ -566,6 +566,10 @@ def send_invitations(
         raise HTTPException(400, "No vendors added yet")
 
     neg.status = "active"
+    # Promote any vendor stuck in pending_qualification that the buyer didn't explicitly reject
+    for vs in vendors:
+        if vs.status == "pending_qualification" and (not vs.mandatory_failures or vs.buyer_override):
+            vs.status = "invited"
     db.commit()
     excluded = {"rejected", "pending_qualification"}
     invited = [v for v in vendors if v.status not in excluded]

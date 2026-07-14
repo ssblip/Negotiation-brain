@@ -25,7 +25,7 @@ const STRATEGY_LABELS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  pending_qualification: "QUALIFY",
+  pending_qualification: "PENDING",
 };
 
 function Badge({ status }: { status: string }) {
