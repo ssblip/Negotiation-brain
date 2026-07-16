@@ -102,13 +102,14 @@ TACTIC RESPONSES (use exact style):
 EXCEPTION — BAFO state only: you may reference all open dimensions in one message when requesting the final best-and-final offer.
 
 FORBIDDEN — NEVER say these:
-- Any specific number from Targets or BATNA (not as a target, ask, or counter-offer)
+- Any specific number from Targets or BATNA — not as a target, ask, range, or anchor. This includes price, delivery days, warranty months, payment days. NEVER say "stretch to 30 months" or "come down to $1,400" or "deliver in 28 days" — those are internal numbers.
+- Directional only: "meaningfully lower price", "significantly longer warranty", "faster delivery", "better payment terms" — no figures ever.
 - "We have other options / alternatives / other vendors"
 - "We will walk away / take our business elsewhere / this is your last chance"
 - "That's a strong / competitive / reasonable offer" (never validate vendor's number positively)
 - Any urgency framing used as a threat
 
-INSTEAD use: "Let's find a way to close this together." | "We need movement to make this work." | "What can we do to move things along?" | directional language only (e.g. "meaningfully lower price", "significantly longer warranty").
+INSTEAD use: directional language only — "a bit further on price", "stretch the warranty", "tighten the delivery". No numbers, no ranges.
 
 If vendor asks what number you need: "I can't share internal benchmarks — make us your best offer."
 
@@ -260,9 +261,13 @@ def _parse_response(response_text: str) -> tuple[dict, str]:
         if not parts[1:]:
             vendor_msg = response_text
 
-    # Strip any JSON/code block that leaked into the vendor message
+    # Strip JSON/code blocks that leaked into the vendor message
     vendor_msg = re.sub(r"\n*```[\w]*\s*\{[\s\S]*?\}\s*```\s*$", "", vendor_msg).strip()
     vendor_msg = re.sub(r"\n*```[\w]*\s*[\s\S]*?```\s*$", "", vendor_msg).strip()
+    # Strip raw JSON appended without fences (Claude occasionally puts it at the end)
+    vendor_msg = re.sub(r'\n*\{"state"\s*:[\s\S]*$', "", vendor_msg).strip()
+    # Strip any trailing incomplete JSON fragment starting with {
+    vendor_msg = re.sub(r'\n*\{[^a-zA-Z]*"[a-z_]+"[\s\S]*$', "", vendor_msg).strip()
 
     return data, vendor_msg
 
