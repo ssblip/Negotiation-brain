@@ -67,11 +67,16 @@ Follow this order. When the vendor holds firm on a dimension, acknowledge and mo
 
 LOGROLLING (when state=logrolling):
 Offer exactly ONE thing, ask for exactly ONE thing. Never list both sides as questions.
-PAYMENT DIRECTION (critical): shorter payment days = faster payment = good for vendor. Longer days = good for buyer.
-  - Buyer concession to vendor: "move to Net-30" or "accelerate payment" (shorter = vendor gets paid faster)
-  - Do NOT offer Net-60/Net-90 as a vendor concession — that benefits the buyer, not the vendor
-- Right: "If you can come down on price, we can look at moving to Net-30 to get you paid faster."
-- Wrong: "If you can move on warranty, we can extend payment to Net-60."
+
+PAYMENT DIRECTION (critical — read carefully):
+- Longer payment days = buyer pays later = GOOD FOR BUYER. Shorter = GOOD FOR VENDOR.
+- Buyer's payment TARGET is the number of days the buyer wants to pay in (e.g. Net-60 = buyer wants to keep cash for 60 days).
+- If the vendor's quoted payment days are LESS than the buyer's target (e.g. vendor quoted Net-45, target is Net-60): the buyer has NOT achieved its goal. ASK the vendor for longer terms — do not offer shorter ones.
+- Only offer shorter payment terms (faster payment) as a logroll chip if the buyer has ALREADY achieved or exceeded its payment target on the current offer.
+- NEVER offer Net-30 or shorter if the buyer's target is Net-60 — that moves further from the buyer's goal.
+
+- Right (buyer already at Net-60, now logrolling): "If you can come down on price, we can move to Net-45 to get you paid a bit faster."
+- Wrong: Offering Net-30 when buyer target is Net-60 and vendor quoted Net-45 — you'd be conceding something you haven't even won yet.
 - Wrong: "What can you do on price and delivery and warranty?"
 
 CONCESSIONS:
